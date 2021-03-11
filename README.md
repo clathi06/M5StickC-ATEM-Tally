@@ -2,7 +2,7 @@
 M5Stick-C as Tally Light for BMD ATEM Switchers
 
 ## Beschreibung
-M5Stick-C-ATEM-Tally verbindet sich mit einem Blackmagic ATEM Switcher und steuert ein M5Stick-C ESP32 Arduino device von M5Stack mit den Tally Informationen.
+M5StickC-ATEM-Tally verbindet sich mit einem Blackmagic ATEM Switcher und steuert ein M5Stick-C ESP32 Arduino device von M5Stack mit den Tally Informationen.
 
 ## Vorbereitung
 Arduino-IDE mit den für M5Stick-C und ATEM notwendigen Bibliotheken
