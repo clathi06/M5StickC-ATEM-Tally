@@ -12,12 +12,13 @@ M5StickC-ATEM-Tally verbindet sich mit einem Blackmagic ATEM Switcher und steuer
 - Eintragen von Name und ggfs. IPv4 des Switchers. 
 
 ## Bedienung
-Nach dem Einschalten werden Setup-Informationen angezeigt, die jeweils mit dem M5-Schalter bestätigt werden müssen. 
-Mit dem Schalter an der linken Seite kann der Stick ein- (kurz) und aus- (6 sec) geschaltet werden. 
-Mit dem Schalter an der rechten Seite kann die Orientierung des Displays umgeschaltet werden. 
+Nach dem Einschalten werden in mehreren Schritten Setup-Informationen angezeigt, die jeweils mit dem M5-Schalter bestätigt werden müssen. 
+Mit dem Schalter an der linken Seite kann der Stick ein (kurz) und aus (6 sec) geschaltet werden. 
+Mit dem Schalter an der rechten Seite kann die automatische Orientierung des Displays aktualisiert werden. 
 Mit einem kurzen Druck auf M5 werden die Setup-Schritte bestätigt und danach bis zu 8 Kameras zyklisch durchgeschaltet. 
 Mit einem langen Druck auf M5 wird das Setup wiederholt. 
-Da beim ersten Display der WiFi-Teil abgeschaltet ist, kann in diesem Zustand eine neue Version geflasht werden. 
+Da nach dem ersten Setup-Schritt der WiFi-Teil abgeschaltet ist, kann in diesem Zustand gut eine neue Version über USB geflasht werden. 
+Nach dem zweiten Setup-Schritt ist WiFi verbunden; dann kann eine neue Version über OTA geflasht werden. 
 
 ## Anzeigen
 - gleichmäßiges Blinken der LED: Warten auf M5 beim Setup
