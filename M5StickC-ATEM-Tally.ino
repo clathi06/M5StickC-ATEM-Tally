@@ -13,8 +13,8 @@
 #include <ATEMstd.h>
 
 // Set this to 1 if you want the intOrientation to update automatically
-#define LED_PIN 10
 #define AUTOUPDATE_ORIENTATION 0
+#define LED_PIN 10
 
 // You can customize the colors if you want
 // http://www.barth-dev.de/online/rgb565-color-picker/
@@ -30,7 +30,7 @@
 const int C_Debug_Level = 3; // plus Events
 //const int C_Debug_Level = 4; // plus AtemSwitcher.serialOutput
 
-// Put your WiFi SSID and C_Wifi_Pwd here
+// Put your WiFi SSID and Wifi_Pwd here
 const char* C_Pgm_Name = "ATEM Tally";
 const char* C_Pgm_Version = "v2021-03-12";
 const char* C_Wifi_SSID = "?";
