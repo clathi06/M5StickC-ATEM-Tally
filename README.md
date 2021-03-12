@@ -23,9 +23,11 @@ Nach dem zweiten Setup-Schritt ist WiFi verbunden; dann kann eine neue Version �
 ## Anzeigen
 - 10 Sekunden LED mit 50 Sekunden Pause: Warten auf M5 beim Setup
 - 0,1 Sekunde LED mit 3 Sekunden Pause: Warten auf einen WiFi-Connect
+- graue Kameranummer auf schwarzem Grund: weder Preview noch Program aktiv (oder ATEM nicht verbunden)
 - schwarze Kameranummer auf grünem Grund: Preview aktiv
 - schwarze Kameranummer auf rotem Grund: Program aktiv
 - grüne Kameranummer auf rotem Grund: Preview und Program aktiv
 
-## Ideen
+## ToDo
+Inline Dokumentation
 Verbindung zu einer Instanz von Bitfocus Companion, um dem 5-Client-Limit der ATEM Switcher zu entgehen
