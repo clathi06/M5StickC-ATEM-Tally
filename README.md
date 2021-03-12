@@ -21,8 +21,8 @@ Nach dem ersten Setup-Schritt ist der WiFi-Teil abgeschaltet; dann kann gut eine
 Nach dem zweiten Setup-Schritt ist WiFi verbunden; dann kann eine neue Version über OTA geflasht werden. 
 
 ## Anzeigen
-- gleichmäßiges Blinken der LED: Warten auf M5 beim Setup
-- kurzes Blinken der LED mit 3 Sekunden Pause: Warten auf einen WiFi-Connect; bis dahin ist der Stick geblockt
+- 10 Sekunden LED mit 50 Sekunden Pause: Warten auf M5 beim Setup
+- 0,1 Sekunde LED mit 3 Sekunden Pause: Warten auf einen WiFi-Connect
 - schwarze Kameranummer auf grünem Grund: Preview aktiv
 - schwarze Kameranummer auf rotem Grund: Program aktiv
 - grüne Kameranummer auf rotem Grund: Preview und Program aktiv
