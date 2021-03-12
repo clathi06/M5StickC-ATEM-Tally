@@ -33,15 +33,12 @@ const int C_Debug_Level = 3; // plus Events
 // Put your WiFi SSID and C_Wifi_Pwd here
 const char* C_Pgm_Name = "ATEM Tally";
 const char* C_Pgm_Version = "v2021-03-12";
-const char* C_Wifi_SSID = "Technik@Halle";
-const char* C_Wifi_Pwd = "Technik@Halle";
+const char* C_Wifi_SSID = "?";
+const char* C_Wifi_Pwd = "?";
 
 // Define the Hostname and/or IP address of your ATEM switcher
 const char* C_Atem_Name = "atem";
-//const char* C_Atem_Name = "atem.evkg.local";
-//IPAddress ipAtem(192, 168, 10, 240);
-IPAddress ipAtem(192, 168, 118, 240);
-//IPAddress ipAtem(2, 0, 0, 8);
+IPAddress ipAtem(192, 168, 10, 240);
 
 ATEMstd AtemSwitcher;
 
