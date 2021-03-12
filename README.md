@@ -12,13 +12,13 @@ M5StickC-ATEM-Tally verbindet sich mit einem Blackmagic ATEM Switcher und steuer
 - Eintragen von Name und ggfs. IPv4 des Switchers. 
 
 ## Bedienung
-Nach dem Einschalten werden in mehreren Schritten Setup-Informationen angezeigt, die jeweils mit dem M5-Schalter bestätigt werden müssen. 
-Mit dem Schalter an der linken Seite kann der Stick ein (kurz) und aus (6 sec) geschaltet werden. 
-Mit dem Schalter an der rechten Seite kann die automatische Orientierung des Displays aktualisiert werden. 
-Mit einem kurzen Druck auf M5 werden die Setup-Schritte bestätigt und danach bis zu 8 Kameras zyklisch durchgeschaltet. 
-Mit einem langen Druck auf M5 wird das Setup wiederholt. 
-Nach dem ersten Setup-Schritt ist der WiFi-Teil abgeschaltet; dann kann gut eine neue Version über USB geflasht werden. 
-Nach dem zweiten Setup-Schritt ist WiFi verbunden; dann kann eine neue Version über OTA geflasht werden. 
+- Nach dem Einschalten werden in mehreren Schritten Setup-Informationen angezeigt, die jeweils mit dem M5-Schalter bestätigt werden müssen. 
+- Mit dem Schalter an der linken Seite kann der Stick ein (kurz) und aus (6 sec) geschaltet werden. 
+- Mit dem Schalter an der rechten Seite kann die automatische Orientierung des Displays aktualisiert werden. 
+- Mit einem kurzen Druck auf M5 werden die Setup-Schritte bestätigt und danach bis zu 8 Kameras zyklisch durchgeschaltet. 
+- Mit einem langen Druck auf M5 wird das Setup wiederholt. 
+- Nach dem ersten Setup-Schritt ist der WiFi-Teil abgeschaltet; dann kann gut eine neue Version über USB geflasht werden. 
+- Nach dem zweiten Setup-Schritt ist WiFi verbunden; dann kann eine neue Version über OTA geflasht werden. 
 
 ## Anzeigen
 - 10 Sekunden LED mit 50 Sekunden Pause: Warten auf M5 beim Setup
@@ -29,5 +29,5 @@ Nach dem zweiten Setup-Schritt ist WiFi verbunden; dann kann eine neue Version �
 - grüne Kameranummer auf rotem Grund: Preview und Program aktiv
 
 ## ToDo
-Inline Dokumentation
-Verbindung zu einer Instanz von Bitfocus Companion, um dem 5-Client-Limit der ATEM Switcher zu entgehen
+- Inline Dokumentation
+- Verbindung zu einer Instanz von Bitfocus Companion, um dem 5-Client-Limit der ATEM Switcher zu entgehen
