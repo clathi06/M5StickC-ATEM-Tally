@@ -32,7 +32,7 @@ const int C_Debug_Level = 3; // plus Events
 
 // Put your WiFi SSID and Wifi_Pwd here
 const char* C_Pgm_Name = "ATEM Tally";
-const char* C_Pgm_Version = "v2021-03-12";
+const char* C_Pgm_Version = "v2021-03-13";
 const char* C_Wifi_SSID = "?";
 const char* C_Wifi_Pwd = "?";
 
@@ -47,8 +47,8 @@ int intSetup = 1;
 int intOrientation = 0;
 int intOrientationPrevious = 0;
 int intOrientationMillisPrevious = millis();
-int intButtonAMillis = 0;
-int intButtonBMillis = 0;
+unsigned long lngButtonAMillis = 0;
+int lngButtonBMillis = 0;
 
 int intCameraNumber = 1;
 String strLcdText = "1";
@@ -121,14 +121,14 @@ void checkM5Events() {
     if (C_Debug_Level >= 3) Serial.println("M5.BtnA.wasPressed");
     intCameraNumber = (intCameraNumber % 8) + 1;
     if (C_Debug_Level >= 2) Serial.printf("ATEM next Camera Number: %d\n", intCameraNumber);
-    intButtonAMillis = millis();
+    lngButtonAMillis = millis();
   }
-  if (M5.BtnA.isPressed() && intButtonAMillis != 0 && millis() - intButtonAMillis >= 500 ) {
+  if (M5.BtnA.isPressed() && lngButtonAMillis != 0 && millis() - lngButtonAMillis >= 500 ) {
     restartESP();
   }
   if (M5.BtnB.wasPressed()) {
     setM5Orientation();
-    intButtonBMillis = millis();
+    lngButtonBMillis = millis();
   }
 }
 
@@ -186,13 +186,13 @@ void waitBtnA(int int1) {
   if (C_Debug_Level >= 2) Serial.printf("M5 waiting for BtnA at intSetup=%d\n", intSetup);
   switch (int1) {
     case 1:
-      M5.Lcd.println("  USB Update or Press M5");
+      M5.Lcd.println("  USB Update oder M5");
       break;
     case 2:
-      M5.Lcd.println("  OTA Update or Press M5");
+      M5.Lcd.println("  OTA Update oder M5");
       break;
     case 3:
-      M5.Lcd.println("Press M5");
+      M5.Lcd.println("   M5");
       break;
   }
   while (M5.BtnA.wasPressed() == false) {
@@ -222,7 +222,7 @@ void waitBtnA(int int1) {
     }
     M5.update();
   }
-  intButtonAMillis = 0;
+  lngButtonAMillis = 0;
   intSetup++;
 }
 
@@ -261,8 +261,8 @@ void printM5Info() {
   M5.Lcd.print(" ");
   M5.Lcd.print(C_Pgm_Version);
   M5.Lcd.print("\n\n"); 
-  M5.Lcd.print("   M5 short OK long Setup\n\n"); 
-  M5.Lcd.print(" BtnB short Orientation\n\n"); 
+  M5.Lcd.print("   M5 kurz OK lang Setup\n\n"); 
+  M5.Lcd.print(" BtnB kurz Ausrichtung\n\n"); 
   M5.update();
 }
 
@@ -338,7 +338,7 @@ void printWiFiInfo0() {
     Serial.println("WiFi stopped");
   }
   if (intSetup == 0) return;
-  M5.Lcd.println(" WiFi stopped");
+  M5.Lcd.println(" WiFi ausgeschaltet");
   M5.Lcd.println();
   M5.update();
 }
@@ -359,7 +359,7 @@ void printWiFiInfo1() {
   M5.Lcd.fillScreen(BLACK);
   delay(100);
   M5.Lcd.setCursor(0, 0);
-  M5.Lcd.println(" WiFi Setup ");
+  M5.Lcd.println(" WiFi Einstellungen ");
   M5.Lcd.println(); 
   // MAC address:
   byte mac[6];
@@ -469,7 +469,7 @@ void printAtemInfo1() {
   M5.Lcd.fillScreen(BLACK);
   delay(1000);
   M5.Lcd.setCursor(0, 0);
-  M5.Lcd.println(" ATEM Setup");
+  M5.Lcd.println(" ATEM Einstellungen");
   M5.Lcd.println();
   M5.Lcd.print(" NAME ");
   M5.Lcd.println(C_Atem_Name);
