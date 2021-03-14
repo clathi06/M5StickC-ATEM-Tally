@@ -12,16 +12,16 @@
 #include <ATEMbase.h>
 #include <ATEMstd.h>
 
-// Set this to 1 if you want the intOrientation to update automatically
-#define AUTOUPDATE_ORIENTATION 0
 #define LED_PIN 10
 
 // You can customize the colors if you want
 // http://www.barth-dev.de/online/rgb565-color-picker/
 #define GRAY   0x0841 //   8   8  8
-#define GREEN  0x0400 //   0 128  0
+//#define GREEN  0x0400 //   0 128  0
+#define GREEN  0x07E0 //   0 255  0
 #define RED    0xF800 // 255   0  0
 #define YELLOW 0xFFE0 // 255 255  0
+#define ORANGE 0xFD20 // 255 165  0  
  
 // Debuglevel
 //const int C_Debug_Level = 0; // nix
@@ -32,7 +32,7 @@ const int C_Debug_Level = 3; // plus Events
 
 // Put your WiFi SSID and Wifi_Pwd here
 const char* C_Pgm_Name = "ATEM Tally";
-const char* C_Pgm_Version = "v2021-03-13";
+const char* C_Pgm_Version = "v2021-03-14";
 const char* C_Wifi_SSID = "?";
 const char* C_Wifi_Pwd = "?";
 
@@ -44,11 +44,12 @@ ATEMstd AtemSwitcher;
 
 int intSetup = 1;
 
+bool isAutoOrientation = 0;
 int intOrientation = 0;
 int intOrientationPrevious = 0;
-int intOrientationMillisPrevious = millis();
+unsigned long intOrientationMillisPrevious = millis();
 unsigned long lngButtonAMillis = 0;
-int lngButtonBMillis = 0;
+unsigned long lngButtonBMillis = 0;
 
 int intCameraNumber = 1;
 String strLcdText = "1";
@@ -111,7 +112,7 @@ void checkEvents() {
 
 void checkM5Events() {
   M5.update();
-  if (AUTOUPDATE_ORIENTATION) {
+  if (isAutoOrientation) {
     if (millis() - intOrientationMillisPrevious >= 500 ) {
       setM5Orientation();
       intOrientationMillisPrevious = millis();
@@ -127,8 +128,17 @@ void checkM5Events() {
     restartESP();
   }
   if (M5.BtnB.wasPressed()) {
-    setM5Orientation();
+    if (C_Debug_Level >= 3) Serial.println("M5.BtnB.wasPressed");
+    intOrientation++;
+    intOrientation = (intOrientation % 4);
+    if (C_Debug_Level >= 2) Serial.printf("M5 new Orientation: %d\n", intOrientation);
+//    setM5Orientation();
     lngButtonBMillis = millis();
+  }
+  if (M5.BtnB.isPressed() && lngButtonBMillis != 0 && millis() - lngButtonBMillis >= 500 ) {
+    if (C_Debug_Level >= 3) Serial.println("M5.BtnB.isPressed");
+    isAutoOrientation = not isAutoOrientation;
+    lngButtonBMillis = 0;
   }
 }
 
@@ -186,15 +196,18 @@ void waitBtnA(int int1) {
   if (C_Debug_Level >= 2) Serial.printf("M5 waiting for BtnA at intSetup=%d\n", intSetup);
   switch (int1) {
     case 1:
-      M5.Lcd.println("  USB Update oder M5");
+      M5.Lcd.print("  USB Update oder ");
       break;
     case 2:
-      M5.Lcd.println("  OTA Update oder M5");
+      M5.Lcd.print("  OTA Update oder ");
       break;
     case 3:
-      M5.Lcd.println("   M5");
+      M5.Lcd.print("   ");
       break;
   }
+  M5.Lcd.setTextColor(ORANGE);
+  M5.Lcd.println("M5");
+  M5.Lcd.setTextColor(WHITE);
   while (M5.BtnA.wasPressed() == false) {
     if (millis() - lngMillis >= lngIntervall) {
       lngMillis = millis();
@@ -261,8 +274,14 @@ void printM5Info() {
   M5.Lcd.print(" ");
   M5.Lcd.print(C_Pgm_Version);
   M5.Lcd.print("\n\n"); 
-  M5.Lcd.print("   M5 kurz OK lang Setup\n\n"); 
-  M5.Lcd.print(" BtnB kurz Ausrichtung\n\n"); 
+  M5.Lcd.setTextColor(ORANGE);
+  M5.Lcd.print("   M5"); 
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.print(" kurz OK lang Setup\n\n"); 
+  M5.Lcd.setTextColor(ORANGE);
+  M5.Lcd.print(" BtnB"); 
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.print(" Ausrichtung\n\n"); 
   M5.update();
 }
 
@@ -298,6 +317,7 @@ typedef enum {
   int intMillis = 0;
   unsigned long lngMillis = 0;
   if (((intSetup == 0) || (intSetup > 2)) && (WiFi.status() == WL_CONNECTED)) return;
+  if (intSetup > 2) intSetup = 2;
   printWiFiInfo1();
   int intLoop = 0;
   while (WiFi.status() != WL_CONNECTED) {
@@ -486,6 +506,7 @@ void printAtemInfo2(int int1) {
     Serial.println();
   }
   if (intSetup == 0) return;
+  M5.Lcd.setTextColor(GREEN);
   if (int1 != 1) M5.Lcd.setTextColor(YELLOW);
   M5.Lcd.print("  DNS ");
   M5.Lcd.println(int1);
