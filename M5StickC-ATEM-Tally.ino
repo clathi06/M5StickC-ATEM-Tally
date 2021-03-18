@@ -2,9 +2,10 @@
 // http://librarymanager/All#M5StickC https://github.com/m5stack/M5StickC
 #include <M5StickC.h>
 #include <WiFi.h>
-#include <ESPmDNS.h>
+#include <WiFiClient.h>
+#include <WebServer.h>
+#include <Update.h>
 #include <WiFiUdp.h>
-#include <ArduinoOTA.h>
 
 // Download these from here
 // https://github.com/kasperskaarhoj/SKAARHOJ-Open-Engineering/tree/master/ArduinoLibs
@@ -22,27 +23,30 @@
 #define RED    0xF800 // 255   0  0
 #define YELLOW 0xFFE0 // 255 255  0
 #define ORANGE 0xFD20 // 255 165  0  
- 
-// Debuglevel
+
+// Debuglevel und Fallback für PowerOff
 //const int C_Debug_Level = 0; // nix
 //const int C_Debug_Level = 1; // Ausgaben
 //const int C_Debug_Level = 2; // plus Eingaben
 const int C_Debug_Level = 3; // plus Events
 //const int C_Debug_Level = 4; // plus AtemSwitcher.serialOutput
+const int C_Timeout = 1; // Setup-Timeout in Minuten
 
 // Put your WiFi SSID and Wifi_Pwd here
 const char* C_Pgm_Name = "ATEM Tally";
-const char* C_Pgm_Version = "v2021-03-14";
+const char* C_Pgm_Version = "v2021-03-18";
 const char* C_Wifi_SSID = "?";
 const char* C_Wifi_Pwd = "?";
+
+WebServer myWebServer(80);
 
 // Define the Hostname and/or IP address of your ATEM switcher
 const char* C_Atem_Name = "atem";
 IPAddress ipAtem(192, 168, 10, 240);
 
-ATEMstd AtemSwitcher;
+ATEMstd myAtemSwitcher;
 
-int intSetup = 1;
+int intSetupMode = 1;
 
 bool isAutoOrientation = 0;
 int intOrientation = 0;
@@ -50,6 +54,7 @@ int intOrientationPrevious = 0;
 unsigned long intOrientationMillisPrevious = millis();
 unsigned long lngButtonAMillis = 0;
 unsigned long lngButtonBMillis = 0;
+int intUpdateMillis = 0;
 
 int intCameraNumber = 1;
 String strLcdText = "1";
@@ -76,8 +81,8 @@ void setup() {
 void loop() {
   checkEvents();
 
-  int intPreviewTally = AtemSwitcher.getPreviewTally(intCameraNumber);
-  int intProgramTally = AtemSwitcher.getProgramTally(intCameraNumber);
+  int intPreviewTally = myAtemSwitcher.getPreviewTally(intCameraNumber);
+  int intProgramTally = myAtemSwitcher.getProgramTally(intCameraNumber);
   
   if ((intOrientation != intOrientationPrevious) || (intCameraNumber != intCameraNumberPrevious) || (intPreviewTallyPrevious != intPreviewTally) || (intProgramTallyPrevious != intProgramTally)) { // changed?
     strLcdText = String(intCameraNumber);
@@ -103,11 +108,10 @@ void checkEvents() {
   // Check for M5Stick Buttons
   checkM5Events();
   // Check for Setup and WiFi
-  while (intSetup != 0) checkCommunication();
-  // Check for OTA-Updates
-  ArduinoOTA.handle();
+//  while (intSetupMode != 0) checkCommunication();
+  checkSetup();
   // Check for packets, respond to them etc. Keeping the connection alive!
-  AtemSwitcher.runLoop();
+  myAtemSwitcher.runLoop();
 }
 
 void checkM5Events() {
@@ -125,6 +129,7 @@ void checkM5Events() {
     lngButtonAMillis = millis();
   }
   if (M5.BtnA.isPressed() && lngButtonAMillis != 0 && millis() - lngButtonAMillis >= 500 ) {
+    if (C_Debug_Level >= 3) Serial.println("M5.BtnA.isPressed");
     restartESP();
   }
   if (M5.BtnB.wasPressed()) {
@@ -142,64 +147,75 @@ void checkM5Events() {
   }
 }
 
-void checkCommunication() {
-  if ((intSetup == 0) && (WiFi.status() == WL_CONNECTED)) return;
+void checkSetup() {
+  if ((intSetupMode == 0) && (WiFi.status() == WL_CONNECTED)) return;
   if (C_Debug_Level >= 2) {
-    Serial.printf("Starting Setup with intSetup=%d\n", intSetup);
+    Serial.printf("\nStarting Setup Mode %d\n", intSetupMode);
   }
-  if (intSetup == 0) drawLabel(strLcdText, GRAY, BLACK, HIGH);
-  if (intSetup != 0) initM5();
-  if (intSetup == 1) {
+  if (intSetupMode == 0) drawLabel(strLcdText, GRAY, BLACK, HIGH);
+  if (intSetupMode != 0) initM5();
+  if (intSetupMode == 1) {
+    stopWiFi();
     printM5Info();
-    initWiFi();
     waitBtnA(1);
-    if (intSetup == 1) return;
+    if (intSetupMode == 1) return;
+    if (intSetupMode == 0) {
+      if (C_Debug_Level >= 1) Serial.println("M5 PowerOff");
+      Serial.flush();
+      M5.Axp.PowerOff();
+    }
   }
   startWiFi();
-  if (intSetup == 2) {
-    startOTA();
+  if (intSetupMode == 2) {
+//    startOTA();
 //  printOTAInfo();
+    startmyWebServer();
     waitBtnA(2);
-    if (intSetup == 2) return;
+    stopmyWebServer();
+    if (intSetupMode <= 2) return;
   }
-  if (intSetup == 3) {
+  if (intSetupMode == 3) {
     startAtem();
     waitBtnA(3);
-    if (intSetup == 3) return;
+    if (intSetupMode <= 3) return;
   }
   intCameraNumberPrevious = 0;
   if (C_Debug_Level >= 2) {
     Serial.println("ATEM last Camera Number: 0");
   }
-  if (intSetup == 0) return;
+  if (intSetupMode == 0) return;
   intCameraNumber = 1;
   if (C_Debug_Level >= 1) {
     Serial.println("ATEM next Camera Number: 1");
   }
-  intSetup = 0;
+  intSetupMode = 0;
 }
 
 void restartESP() {
-  if (C_Debug_Level >= 3) Serial.println("M5.BtnA.isPressed");
   digitalWrite(LED_PIN, LOW);
   stopWiFi();
-  if (C_Debug_Level >= 1) Serial.println("WiFi stopped");
   if (C_Debug_Level >= 3) Serial.println("M5 Restart");
+  Serial.flush();
   ESP.restart();
 }
 
 void waitBtnA(int int1) {
+  int intTimeout = C_Timeout + 1;
   int intLedState = HIGH;
   unsigned long lngIntervall = 0;
   unsigned long lngMillis = 0;
 //  digitalWrite(LED_PIN, LOW);
-  if (C_Debug_Level >= 2) Serial.printf("M5 waiting for BtnA at intSetup=%d\n", intSetup);
+  if (C_Debug_Level >= 2) Serial.printf("M5 waiting for BtnA at Setup Mode %d\n", intSetupMode);
+  M5.Lcd.setTextColor(WHITE);
   switch (int1) {
+    case 0:
+      M5.Lcd.print(" Reboot mit ");
+      break;
     case 1:
       M5.Lcd.print("  USB Update oder ");
       break;
     case 2:
-      M5.Lcd.print("  OTA Update oder ");
+      M5.Lcd.print(" HTTP Update oder ");
       break;
     case 3:
       M5.Lcd.print("   ");
@@ -213,16 +229,24 @@ void waitBtnA(int int1) {
       lngMillis = millis();
       if (intLedState == HIGH) {
         intLedState = LOW;
+//        if (C_Debug_Level >= 3) Serial.println("M5 GPIO10 LOW=" + String(digitalRead(10)));
         lngIntervall = 10000;
       } else {
         intLedState = HIGH;     
+//        if (C_Debug_Level >= 3) Serial.println("M5 GPIO10 HIGH=" + String(digitalRead(10)));
         lngIntervall = 50000;
+        intTimeout--;
       }
-    digitalWrite(LED_PIN, intLedState);
+      if (intTimeout <= 0) {
+        intSetupMode--;
+        if (C_Debug_Level >= 1) Serial.println("M5 Fallback to Setup " + String(intSetupMode));
+        return;
+      }
+      digitalWrite(LED_PIN, intLedState);
     }
     M5.update();
-    if (intSetup >= 2) ArduinoOTA.handle();
-    if (intSetup >= 3) AtemSwitcher.runLoop();
+    if (intSetupMode >= 2) myWebServer.handleClient(); 
+    if (intSetupMode >= 3) myAtemSwitcher.runLoop();
   }
   if (C_Debug_Level >= 3) Serial.println("M5.BtnA.wasPressed");
   digitalWrite(LED_PIN, HIGH);
@@ -231,12 +255,13 @@ void waitBtnA(int int1) {
   while (M5.BtnA.isPressed() == true) {
     if (millis() - lngMillis >= 500) {
       if (C_Debug_Level >= 3) Serial.println("M5.BtnA.isPressed");
+//      if (C_Debug_Level >= 3) Serial.println("M5 GPIO39=" + String(digitalRead(39)));
       return;
     }
     M5.update();
   }
   lngButtonAMillis = 0;
-  intSetup++;
+  intSetupMode++;
 }
 
 void initM5() {
@@ -282,14 +307,9 @@ void printM5Info() {
   M5.Lcd.print(" BtnB"); 
   M5.Lcd.setTextColor(WHITE);
   M5.Lcd.print(" Ausrichtung\n\n"); 
+  M5.Lcd.println(" WiFi ausgeschaltet");
+  M5.Lcd.println();
   M5.update();
-}
-
-void initWiFi() {
-  if (intSetup > 1) return;
-  WiFi.persistent(false);
-  stopWiFi();
-  printWiFiInfo0();
 }
 
 void stopWiFi() {
@@ -299,6 +319,9 @@ void stopWiFi() {
   }
   WiFi.mode(WIFI_OFF);
   delay(500);
+  if (C_Debug_Level >= 1) {
+    Serial.println("WiFi stopped");
+  }
 }
 
 void startWiFi() {
@@ -314,20 +337,35 @@ typedef enum {
     WL_DISCONNECTED     = 6
 } wl_status_t;  
 */
-  int intMillis = 0;
-  unsigned long lngMillis = 0;
-  if (((intSetup == 0) || (intSetup > 2)) && (WiFi.status() == WL_CONNECTED)) return;
-  if (intSetup > 2) intSetup = 2;
+  if ((intSetupMode == 0) && (WiFi.status() == WL_CONNECTED)) return;
+  if ((intSetupMode > 2) && (WiFi.status() == WL_CONNECTED)) return;
+  if (intSetupMode > 2) intSetupMode = 2;
   printWiFiInfo1();
   int intLoop = 0;
+  int intMillis = 0;
+  int intTimeout = C_Timeout + 1;
+  unsigned long lngMillis = 0;
+  String strHostName = WiFi.macAddress();
+  strHostName.replace(":", "");
+  strHostName.toLowerCase();
+  strHostName = "esp32-" + strHostName.substring(6);
+  char chrHostName[13];
+  strHostName.toCharArray(chrHostName, 13);
   while (WiFi.status() != WL_CONNECTED) {
     if (intLoop % 20 == 0) {
       digitalWrite(LED_PIN, LOW);
       stopWiFi();
+      intTimeout--;
+      if (intTimeout <= 0) {
+        restartESP();
+      }
       digitalWrite(LED_PIN, HIGH);
       delay(1000);
       WiFi.mode(WIFI_STA);
       delay(1000);
+      WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+      WiFi.setHostname(chrHostName);  
+      WiFi.persistent(false);
       WiFi.begin(C_Wifi_SSID, C_Wifi_Pwd);
       delay(1000);
     }
@@ -342,7 +380,10 @@ typedef enum {
     lngMillis = millis();
     while (millis() - lngMillis < 3000) {
       if (WiFi.status() == WL_CONNECTED) lngMillis = 0;
-      if (M5.BtnA.isPressed() && millis() - intMillis >= 500 ) restartESP();
+      if (M5.BtnA.isPressed() && millis() - intMillis >= 500 ) {
+        if (C_Debug_Level >= 3) Serial.println("M5.BtnA.isPressed");
+        restartESP();
+      }
       M5.update();
     }
     intLoop++;
@@ -351,16 +392,6 @@ typedef enum {
     }
   }
   printWiFiInfo2();
-}
-
-void printWiFiInfo0() {
-  if (C_Debug_Level >= 1) {
-    Serial.println("WiFi stopped");
-  }
-  if (intSetup == 0) return;
-  M5.Lcd.println(" WiFi ausgeschaltet");
-  M5.Lcd.println();
-  M5.update();
 }
 
 void printWiFiInfo1() {
@@ -375,7 +406,7 @@ void printWiFiInfo1() {
     Serial.print(C_Wifi_SSID);
     Serial.println();
   }
-  if (intSetup != 2) return;
+  if (intSetupMode != 2) return;
   M5.Lcd.fillScreen(BLACK);
   delay(100);
   M5.Lcd.setCursor(0, 0);
@@ -414,60 +445,10 @@ void printWiFiInfo2() {
     Serial.print("WiFi Signal strength: ");
     Serial.println(WiFi.RSSI());  
   }
-  if (intSetup != 2) return;
+  if (intSetupMode != 2) return;
   M5.Lcd.print(" IPv4 ");
   M5.Lcd.println(ip);
   M5.Lcd.println(); 
-  M5.update();
-}
-
-void startOTA() {
-  if (intSetup > 2) return;
-  // Port defaults to 3232
-  // ArduinoOTA.setPort(3232);
-
-  // Hostname defaults to esp3232-[MAC]
-  // ArduinoOTA.setHostname("myesp32");
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-
-  ArduinoOTA
-    .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH)
-        type = "sketch";
-      else // U_SPIFFS
-        type = "filesystem";
-
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
-    })
-    .onEnd([]() {
-      Serial.println("\nEnd");
-    })
-    .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    })
-    .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-      else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    });
-
-  ArduinoOTA.begin();
-}
-
-void printOTAInfo() {
-  if (intSetup == 0) return;
-  M5.Lcd.print("  OTA Arduino");
   M5.update();
 }
 
@@ -478,14 +459,14 @@ void startAtem() {
   int intRC = WiFi.hostByName(C_Atem_Name, ipDNS);
   if (intRC == 1) ipAtem = ipDNS;
   printAtemInfo2(intRC);
-  AtemSwitcher.begin(ipAtem);
-  if (C_Debug_Level >= 4) AtemSwitcher.serialOutput(0x80);
-  AtemSwitcher.connect();
+  myAtemSwitcher.begin(ipAtem);
+  if (C_Debug_Level >= 4) myAtemSwitcher.serialOutput(0x80);
+  myAtemSwitcher.connect();
   printAtemInfo3();
 }
 
 void printAtemInfo1() {
-  if (intSetup == 0) return;
+  if (intSetupMode == 0) return;
   M5.Lcd.fillScreen(BLACK);
   delay(1000);
   M5.Lcd.setCursor(0, 0);
@@ -505,7 +486,7 @@ void printAtemInfo2(int int1) {
     Serial.print(ipAtem);
     Serial.println();
   }
-  if (intSetup == 0) return;
+  if (intSetupMode == 0) return;
   M5.Lcd.setTextColor(GREEN);
   if (int1 != 1) M5.Lcd.setTextColor(YELLOW);
   M5.Lcd.print("  DNS ");
@@ -522,12 +503,12 @@ void printAtemInfo3() {
   if (C_Debug_Level >= 1) {
     Serial.println("Atem.begin done");
   }
-  if (intSetup == 0) return;
+  if (intSetupMode == 0) return;
 }
 
 void drawLabel(String labelText, unsigned long int labelColor, unsigned long int screenColor, bool ledValue) {
   digitalWrite(LED_PIN, ledValue);
-  if (intSetup != 0) return;
+  if (intSetupMode != 0) return;
   M5.Lcd.fillScreen(screenColor);
   M5.Lcd.setRotation(intOrientation);
   M5.Lcd.setTextColor(labelColor, screenColor);
@@ -574,6 +555,82 @@ void setM5Orientation() {
       Serial.printf("M5 Orientation changed to %d\n", intOrientation);
     }
     M5.Lcd.setRotation(intOrientation);
+  }
+}
+
+String myWebServerIndex = 
+"<form method='POST' action='/update' enctype='multipart/form-data'>"
+"<br>"
+"<input type='file' name='update'>"
+"<br><br>"
+"<input type='submit' value='Update'>"
+"</form>";
+
+void startmyWebServer() {
+  myWebServer.on("/", HTTP_GET, []() {
+    myWebServer.sendHeader("Connection", "close");
+    myWebServer.send(200, "text/html", myWebServerIndex);
+  });
+  /*handling uploading firmware file */
+  myWebServer.on("/update", HTTP_POST, []() {
+    myWebServer.sendHeader("Connection", "close");
+    myWebServer.send(200, "text/plain", (Update.hasError()) ? "FEHLER" : "OK");
+    intSetupMode = 1;
+    waitBtnA(0);
+    ESP.restart();
+  }, []() {
+    HTTPUpload& myHTTPUpload = myWebServer.upload();
+    if (myHTTPUpload.status == UPLOAD_FILE_START) {
+      if (C_Debug_Level >= 1) Serial.printf("Update: %s\n", myHTTPUpload.filename.c_str());
+      M5.Lcd.fillScreen(BLACK);
+      M5.Lcd.setCursor(0, 0);
+      M5.Lcd.setTextColor(YELLOW);
+      M5.Lcd.println(myHTTPUpload.filename.c_str());
+      digitalWrite(LED_PIN, LOW);
+      intUpdateMillis = 0;
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
+        if (C_Debug_Level >= 1) Update.printError(Serial);
+        M5.Lcd.setTextColor(RED);
+        Update.printError(M5.Lcd);
+      }
+    } else if (myHTTPUpload.status == UPLOAD_FILE_WRITE) {
+      /* flashing firmware to ESP*/
+      if (millis() - intUpdateMillis > 1000) {
+        if (C_Debug_Level >= 2) Serial.print(".");
+        M5.Lcd.print(".");
+        intUpdateMillis = millis();
+      }
+      if (Update.write(myHTTPUpload.buf, myHTTPUpload.currentSize) != myHTTPUpload.currentSize) {
+        if (C_Debug_Level >= 1) Update.printError(Serial);
+        M5.Lcd.setTextColor(RED);
+        Update.printError(M5.Lcd);
+      }
+    } else if (myHTTPUpload.status == UPLOAD_FILE_END) {
+      if (Update.end(true)) { //true to set the size to the current progress
+        if (C_Debug_Level >= 1) Serial.printf("Update Success: %u Byte\nWait for Reboot...\n", myHTTPUpload.totalSize);
+        M5.Lcd.setTextColor(GREEN);
+        M5.Lcd.printf("\n\n Ok: %u Byte\n\n", myHTTPUpload.totalSize);
+      } else {
+        if (C_Debug_Level >= 1) Update.printError(Serial);
+        M5.Lcd.setTextColor(RED);
+        Update.printError(M5.Lcd);
+      }
+    }
+  });
+  myWebServer.begin();
+  if (intSetupMode == 0) return;
+  if (C_Debug_Level >= 2) {
+    Serial.print("HTTP Update Server started");
+    Serial.println();
+  }
+}
+
+void stopmyWebServer() {
+  myWebServer.stop(); 
+  if (intSetupMode == 0) return;
+  if (C_Debug_Level >= 2) {
+    Serial.print("HTTP Update Server stopped");
+    Serial.println();
   }
 }
 
