@@ -1,6 +1,12 @@
-
 // http://librarymanager/All#M5StickC https://github.com/m5stack/M5StickC
+#define M5STICKC
+//#define M5STICKCPLUS
+#if defined(M5STICKC)
 #include <M5StickC.h>
+#endif
+#if defined(M5STICKCPLUS)
+#include <M5StickCPlus.h>
+#endif
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <WebServer.h>
@@ -28,15 +34,17 @@
 //const int C_Debug_Level = 0; // nix
 //const int C_Debug_Level = 1; // Ausgaben
 //const int C_Debug_Level = 2; // plus Eingaben
-const int C_Debug_Level = 3; // plus Events
+//const int C_Debug_Level = 3; // plus Events
 //const int C_Debug_Level = 4; // plus AtemSwitcher.serialOutput
-const int C_Timeout = 1; // Setup-Timeout in Minuten
+const int C_Debug_Level = 0;
+const int C_Timeout = 5; // Setup-Timeout in Minuten
 
-// Put your WiFi SSID and Wifi_Pwd here
+// Einstellungen
 const char* C_Pgm_Name = "ATEM Tally";
-const char* C_Pgm_Version = "v2021-03-18";
-const char* C_Wifi_SSID = "?";
-const char* C_Wifi_Pwd = "?";
+const char* C_Pgm_Version = "v2021-03-19";
+const char* C_WiFi_SSID = "?";
+const char* C_WiFi_Pwd = "?";
+char chrHostName[12] = "tl-12-34-56";
 
 WebServer myWebServer(80);
 
@@ -58,6 +66,7 @@ int intUpdateMillis = 0;
 
 int intCameraNumber = 1;
 String strLcdText = "1";
+String strLcdSize;
 
 int intCameraNumberPrevious = 0;
 int intPreviewTallyPrevious = 0;
@@ -67,10 +76,28 @@ void setup() {
   Serial.begin(115200);
   //
   M5.begin();
+  #if defined(M5STICKC) 
   M5.MPU6886.Init();
+  #endif
+  #if defined(M5STICKCPLUS) 
+  M5.Imu.Init();
+  #endif
   pinMode(LED_PIN, OUTPUT);
-  return;
+  strLcdSize = String(M5.Lcd.width()) + "*" + String(M5.Lcd.height());
+  // WiFi
+  String strHostName = WiFi.macAddress();
+  strHostName.replace(":", "-");
+  strHostName.toLowerCase();
+  strHostName = "tl-" + strHostName.substring(9);
+  strHostName.toCharArray(chrHostName, 12);
+  if (C_Debug_Level >= 1) {
+    Serial.print("WiFi MAC: ");
+    Serial.println(WiFi.macAddress());
+    Serial.print("WiFi Hostname: ");
+    Serial.println(chrHostName);
+  }
   // GPIO
+  return;
   pinMode(26, INPUT); // PIN  (INPUT, OUTPUT, ANALOG)
   pinMode(36, INPUT); // PIN  (INPUT,       , ANALOG)
   pinMode( 0, INPUT); // PIN  (INPUT, OUTPUT,       )
@@ -94,6 +121,7 @@ void loop() {
       drawLabel(strLcdText, BLACK, GREEN, HIGH);
     } else if (!intPreviewTally || !intProgramTally) { // neither
       drawLabel(strLcdText, GRAY, BLACK, HIGH);
+//      drawLabel(strLcdText, WHITE, BLACK, HIGH);
     }
   }
 
@@ -169,9 +197,9 @@ void checkSetup() {
   if (intSetupMode == 2) {
 //    startOTA();
 //  printOTAInfo();
-    startmyWebServer();
+    startWebServer();
     waitBtnA(2);
-    stopmyWebServer();
+    stopWebServer();
     if (intSetupMode <= 2) return;
   }
   if (intSetupMode == 3) {
@@ -218,7 +246,7 @@ void waitBtnA(int int1) {
       M5.Lcd.print(" HTTP Update oder ");
       break;
     case 3:
-      M5.Lcd.print("   ");
+      M5.Lcd.print(" Weiter mit ");
       break;
   }
   M5.Lcd.setTextColor(ORANGE);
@@ -291,24 +319,38 @@ void initM5() {
 }
 
 void printM5Info() {
+  if (C_Debug_Level >= 2) {
+    Serial.printf("M5 LCD Size %s\n", strLcdSize);
+    Serial.printf("M5 Akku %.3fV\n", M5.Axp.GetBatVoltage());  
+  }
   M5.Lcd.fillScreen(BLACK);
   delay(100);
   M5.Lcd.setCursor(0, 0);
-  M5.Lcd.print(" ");
-  M5.Lcd.print(C_Pgm_Name);
-  M5.Lcd.print(" ");
-  M5.Lcd.print(C_Pgm_Version);
-  M5.Lcd.print("\n\n"); 
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(); 
+  #endif
+  M5.Lcd.printf(" %s %s\n\n", C_Pgm_Name, C_Pgm_Version);
   M5.Lcd.setTextColor(ORANGE);
   M5.Lcd.print("   M5"); 
   M5.Lcd.setTextColor(WHITE);
-  M5.Lcd.print(" kurz OK lang Setup\n\n"); 
+  M5.Lcd.print(" kurz OK lang Setup\n"); 
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(); 
+  #endif
   M5.Lcd.setTextColor(ORANGE);
   M5.Lcd.print(" BtnB"); 
   M5.Lcd.setTextColor(WHITE);
-  M5.Lcd.print(" Ausrichtung\n\n"); 
-  M5.Lcd.println(" WiFi ausgeschaltet");
-  M5.Lcd.println();
+  M5.Lcd.print(" Ausrichtung\n\n");
+  M5.Lcd.print(" Akku ");  
+  double dblBat = M5.Axp.GetBatVoltage(); 
+  if (dblBat < 3.5) M5.Lcd.setTextColor(RED);
+  if (dblBat >= 4) M5.Lcd.setTextColor(GREEN);
+  M5.Lcd.printf("%sV\n", String(dblBat));  
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(); 
+  #endif
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.print(" WiFi ausgeschaltet\n\n");
   M5.update();
 }
 
@@ -345,12 +387,6 @@ typedef enum {
   int intMillis = 0;
   int intTimeout = C_Timeout + 1;
   unsigned long lngMillis = 0;
-  String strHostName = WiFi.macAddress();
-  strHostName.replace(":", "");
-  strHostName.toLowerCase();
-  strHostName = "esp32-" + strHostName.substring(6);
-  char chrHostName[13];
-  strHostName.toCharArray(chrHostName, 13);
   while (WiFi.status() != WL_CONNECTED) {
     if (intLoop % 20 == 0) {
       digitalWrite(LED_PIN, LOW);
@@ -366,7 +402,7 @@ typedef enum {
       WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
       WiFi.setHostname(chrHostName);  
       WiFi.persistent(false);
-      WiFi.begin(C_Wifi_SSID, C_Wifi_Pwd);
+      WiFi.begin(C_WiFi_SSID, C_WiFi_Pwd);
       delay(1000);
     }
     if (C_Debug_Level >= 2) Serial.print(".");
@@ -397,37 +433,32 @@ typedef enum {
 void printWiFiInfo1() {
   // Connecting WiFi
   if (C_Debug_Level >= 3) {
-    Serial.print("WiFi.status=");
-    Serial.print(WiFi.status());
-    Serial.println();
+    Serial.printf("WiFi.status=%d\n", WiFi.status());
   }
   if (C_Debug_Level >= 2) {
-    Serial.print("WiFi connecting to ");
-    Serial.print(C_Wifi_SSID);
-    Serial.println();
+//    Serial.printf("WiFi Name: %s\n", chrHostName);
+    Serial.printf("WiFi connecting to %s\n", C_WiFi_SSID);
   }
   if (intSetupMode != 2) return;
   M5.Lcd.fillScreen(BLACK);
   delay(100);
   M5.Lcd.setCursor(0, 0);
-  M5.Lcd.println(" WiFi Einstellungen ");
-  M5.Lcd.println(); 
-  // MAC address:
-  byte mac[6];
-  WiFi.macAddress(mac);
-  String strMAC = HexToString(mac[0]);
-  strMAC = String(strMAC + ":" + HexToString(mac[1]));
-  strMAC = String(strMAC + ":" + HexToString(mac[2]));
-  strMAC = String(strMAC + ":" + HexToString(mac[3]));
-  strMAC = String(strMAC + ":" + HexToString(mac[4]));
-  strMAC = String(strMAC + ":" + HexToString(mac[5]));
-  // text print
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(); 
+  #endif
+  M5.Lcd.print(" WiFi Einstellungen\n\n");
+  // MAC address
   M5.Lcd.print("  MAC ");
-  M5.Lcd.println(strMAC);
+  M5.Lcd.print(WiFi.macAddress());
   M5.Lcd.println(); 
-  M5.Lcd.print(" SSID ");
-  M5.Lcd.println(C_Wifi_SSID);
-  M5.Lcd.println(); 
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(); 
+  #endif
+  M5.Lcd.printf(" NAME %s\n\n", chrHostName);
+  M5.Lcd.printf(" SSID %s\n", C_WiFi_SSID);
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(); 
+  #endif
   M5.update();
 }
 
@@ -437,9 +468,7 @@ void printWiFiInfo2() {
     Serial.println();  
   }
   if (C_Debug_Level >= 1) {
-    Serial.print("WiFi connected to ");
-    Serial.print(C_Wifi_SSID);
-    Serial.println();  
+    Serial.printf("WiFi connected to %s\n", C_WiFi_SSID);
     Serial.print("WiFi IPv4: ");
     Serial.println(ip);  
     Serial.print("WiFi Signal strength: ");
@@ -470,11 +499,11 @@ void printAtemInfo1() {
   M5.Lcd.fillScreen(BLACK);
   delay(1000);
   M5.Lcd.setCursor(0, 0);
-  M5.Lcd.println(" ATEM Einstellungen");
-  M5.Lcd.println();
-  M5.Lcd.print(" NAME ");
-  M5.Lcd.println(C_Atem_Name);
-  M5.Lcd.println();
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(); 
+  #endif
+  M5.Lcd.print(" ATEM Einstellungen\n\n");
+  M5.Lcd.printf(" NAME %s\n\n", C_Atem_Name);
   M5.update();
 }
 
@@ -483,8 +512,7 @@ void printAtemInfo2(int int1) {
     Serial.print("ATEM DNS: ");
     Serial.println(int1); 
     Serial.print("ATEM IPv4: ");
-    Serial.print(ipAtem);
-    Serial.println();
+    Serial.println(ipAtem);
   }
   if (intSetupMode == 0) return;
   M5.Lcd.setTextColor(GREEN);
@@ -512,28 +540,20 @@ void drawLabel(String labelText, unsigned long int labelColor, unsigned long int
   M5.Lcd.fillScreen(screenColor);
   M5.Lcd.setRotation(intOrientation);
   M5.Lcd.setTextColor(labelColor, screenColor);
-  drawStringInCenter(labelText, 8);
-}
-
-void drawStringInCenter(String input, int font) {
-  int datumPrevious = M5.Lcd.getTextDatum();
+  int intTextDatum = M5.Lcd.getTextDatum();
   M5.Lcd.setTextDatum(MC_DATUM);
-  M5.Lcd.drawString(input, M5.Lcd.width() / 2, M5.Lcd.height() / 2, font);
-  M5.Lcd.setTextDatum(datumPrevious);
-}
-
-String HexToString(byte Zeichen) {
-  String strText = String(Zeichen, HEX);
-  if (strText.length() == 1) {
-    strText = String("0" + strText);
-  }
-  strText.toUpperCase();
-  return strText;
+  M5.Lcd.drawString(labelText, M5.Lcd.width() / 2, M5.Lcd.height() / 2, 8);
+  M5.Lcd.setTextDatum(intTextDatum);
 }
 
 void setM5Orientation() {
   float accX = 0, accY = 0, accZ = 0;
+  #if defined(M5STICKC) 
   M5.MPU6886.getAccelData(&accX, &accY, &accZ);
+  #endif
+  #if defined(M5STICKCPLUS) 
+  M5.Imu.getAccelData(&accX, &accY, &accZ);
+  #endif
   //Serial.printf("%.2f   %.2f   %.2f \n",accX * 1000, accY * 1000, accZ * 1000);
 
   if (accZ < .9) {
@@ -566,7 +586,7 @@ String myWebServerIndex =
 "<input type='submit' value='Update'>"
 "</form>";
 
-void startmyWebServer() {
+void startWebServer() {
   myWebServer.on("/", HTTP_GET, []() {
     myWebServer.sendHeader("Connection", "close");
     myWebServer.send(200, "text/html", myWebServerIndex);
@@ -585,6 +605,7 @@ void startmyWebServer() {
       M5.Lcd.fillScreen(BLACK);
       M5.Lcd.setCursor(0, 0);
       M5.Lcd.setTextColor(YELLOW);
+      M5.Lcd.println();
       M5.Lcd.println(myHTTPUpload.filename.c_str());
       digitalWrite(LED_PIN, LOW);
       intUpdateMillis = 0;
@@ -607,9 +628,12 @@ void startmyWebServer() {
       }
     } else if (myHTTPUpload.status == UPLOAD_FILE_END) {
       if (Update.end(true)) { //true to set the size to the current progress
-        if (C_Debug_Level >= 1) Serial.printf("Update Success: %u Byte\nWait for Reboot...\n", myHTTPUpload.totalSize);
+        if (C_Debug_Level >= 1) Serial.printf("\n%u Byte Ok\nWait for Reboot...\n", myHTTPUpload.totalSize);
+        M5.Lcd.setTextColor(WHITE);
+        M5.Lcd.printf("\n\n %u Byte ", myHTTPUpload.totalSize);
         M5.Lcd.setTextColor(GREEN);
-        M5.Lcd.printf("\n\n Ok: %u Byte\n\n", myHTTPUpload.totalSize);
+        M5.Lcd.print("Ok \n\n");
+        M5.Lcd.setTextColor(WHITE);
       } else {
         if (C_Debug_Level >= 1) Update.printError(Serial);
         M5.Lcd.setTextColor(RED);
@@ -625,7 +649,7 @@ void startmyWebServer() {
   }
 }
 
-void stopmyWebServer() {
+void stopWebServer() {
   myWebServer.stop(); 
   if (intSetupMode == 0) return;
   if (C_Debug_Level >= 2) {

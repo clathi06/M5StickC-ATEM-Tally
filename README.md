@@ -18,10 +18,10 @@ M5StickC-ATEM-Tally verbindet sich mit einem Blackmagic ATEM Switcher und steuer
 - Mit einem kurzen Druck auf M5 werden die Setup-Schritte bestätigt und danach bis zu 8 Kameras zyklisch durchgeschaltet. 
 - Mit einem langen Druck auf M5 wird das Setup wiederholt. 
 - Nach dem ersten Setup-Schritt ist WiFi abgeschaltet; dann kann eine neue Version über USB geflasht werden. 
-- Nach dem zweiten Setup-Schritt ist WiFi verbunden; dann kann eine neue Version über OTA geflasht werden. 
+- Nach dem zweiten Setup-Schritt ist WiFi verbunden; dann kann eine neue Version über den integrierten Webserver geflasht werden. 
 
 ## Anzeigen
-- 10 Sekunden LED mit 50 Sekunden Pause: Warten auf M5 beim Setup
+- 10 Sekunden LED mit 50 Sekunden Pause: Warten auf M5 beim Setup oder nach dem Update
 - 0,1 Sekunde LED mit 3 Sekunden Pause: Warten auf einen WiFi-Connect
 - graue Kameranummer auf schwarzem Grund: weder Preview noch Program aktiv (oder ATEM nicht verbunden)
 - schwarze Kameranummer auf grünem Grund: Preview aktiv
