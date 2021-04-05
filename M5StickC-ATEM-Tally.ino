@@ -1,17 +1,17 @@
 // http://librarymanager/All#M5StickC https://github.com/m5stack/M5StickC
-#define M5STICKC
-//#define M5STICKCPLUS
-#if defined(M5STICKC)
+#define M5STICKCPLUS
+#ifdef M5STICKCPLUS
+#include <M5StickCPlus.h>
+#else
 #include <M5StickC.h>
 #endif
-#if defined(M5STICKCPLUS)
-#include <M5StickCPlus.h>
-#endif
+#include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <WebServer.h>
 #include <Update.h>
 #include <WiFiUdp.h>
+#include <WiFiManager.h>         // https://github.com/tzapu/WiFiManager
 
 // Download these from here
 // https://github.com/kasperskaarhoj/SKAARHOJ-Open-Engineering/tree/master/ArduinoLibs
@@ -35,26 +35,65 @@
 //const int C_Debug_Level = 1; // Ausgaben
 //const int C_Debug_Level = 2; // plus Eingaben
 //const int C_Debug_Level = 3; // plus Events
-//const int C_Debug_Level = 4; // plus AtemSwitcher.serialOutput
+//const int C_Debug_Level = 4; // plus WiFiManager.serialOutput
+//const int C_Debug_Level = 5; // plus AtemSwitcher.serialOutput
 const int C_Debug_Level = 0;
-const int C_Timeout = 5; // Setup-Timeout in Minuten
 
 // Einstellungen
 const char* C_Pgm_Name = "ATEM Tally";
-const char* C_Pgm_Version = "v2021-03-19";
-const char* C_WiFi_SSID = "?";
-const char* C_WiFi_Pwd = "?";
+const char* C_Pgm_Version = "2021-04-05";
+const char* C_AP_SSID = "ATEM-Tally@M5StickC";
+char chrWiFiSSID[41] = "SSID";
+//char chrWiFiSSID[41] = "Technik@Halle";
+char chrWiFi_Pwd[41] = "";
 char chrHostName[12] = "tl-12-34-56";
 
+// Setup 0
+Preferences myPreferences;
+unsigned int prefBootCount;
+const char* C_Pref_Section = "Tally";
+String prefAtemName;
+String prefAtemIPv4;
+unsigned int prefAtemInputs;
+
+// Setup 1
+int intTimeOutMin; // Timeout in Minuten
+int intTimeOutSec; // zusätzlicher Timeout in Sekunden
+int intTimeOut;
+
+// Setup 2 und 5
+ATEMstd myAtemSwitcher;
+// Define the Hostname and/or IP address of your ATEM switcher
+const int C_AtemNameSize = 5;
+char* arr_AtemName[] = {"", "atem", "atem-mini", "atem-tvs", "atem-tvs-hd"} ;
+char chrAtemName[16];
+char arr_AtemName_0[16];
+char* arr_AtemIPv4[] = {"0.0.0.0", "192.168.10.240", "192.168.10.240", "192.168.118.81", "192.168.118.82"};
+char chrAtemIPv4[16];
+char arr_AtemIPv4_0[16];
+unsigned int arr_AtemInputs[] = {1, 8, 4, 6, 8};
+unsigned int intAtemInputs;
+//unsigned int intrun_AtemInputs;
+IPAddress ipAtem;
+IPAddress ipAtemDNS;
+//IPAddress ipAtem(192, 168, 118, 240);
+//IPAddress ipAtem(2, 0, 0, 8);
+int intAtemNr;
+int intAtemDNS;
+
+// Setup 3
+WiFiManager wifiManager;
+WiFiManagerParameter wmp_atem_name("atem_name", "ATEM Name");
+WiFiManagerParameter wmp_atem_ipv4("atem_ipv4", "ATEM IPv4");
+bool isConfigPortalStarted;
+bool isConfigPortalActive;
+
+// Setup 4
 WebServer myWebServer(80);
 
-// Define the Hostname and/or IP address of your ATEM switcher
-const char* C_Atem_Name = "atem";
-IPAddress ipAtem(192, 168, 10, 240);
-
-ATEMstd myAtemSwitcher;
-
-int intSetupMode = 1;
+int intSetupCount = 0;
+int intSetupLoop = 0;
+int intSetupPage = 1;
 
 bool isAutoOrientation = 0;
 int intOrientation = 0;
@@ -64,40 +103,65 @@ unsigned long lngButtonAMillis = 0;
 unsigned long lngButtonBMillis = 0;
 int intUpdateMillis = 0;
 
-int intCameraNumber = 1;
-String strLcdText = "1";
 String strLcdSize;
+String strLcdText = "1";
 
+int intCameraNumber = 1;
 int intCameraNumberPrevious = 0;
 int intPreviewTallyPrevious = 0;
 int intProgramTallyPrevious = 0;
 
 void setup() {
+// Serial
   Serial.begin(115200);
-  //
+// M5
   M5.begin();
   #if defined(M5STICKC) 
   M5.MPU6886.Init();
   #endif
-  #if defined(M5STICKCPLUS) 
+  #ifdef M5STICKCPLUS)
   M5.Imu.Init();
   #endif
   pinMode(LED_PIN, OUTPUT);
   strLcdSize = String(M5.Lcd.width()) + "*" + String(M5.Lcd.height());
-  // WiFi
+// ATEM Array
+  strlcpy(arr_AtemName_0, arr_AtemName[0], sizeof(arr_AtemName_0));
+  arr_AtemName[0] = arr_AtemName_0; // Tricky: Zeiger umbiegen
+  strlcpy(arr_AtemIPv4_0, arr_AtemIPv4[0], sizeof(arr_AtemIPv4_0));
+  arr_AtemIPv4[0] = arr_AtemIPv4_0;
+// Preferences
+  myPreferences.begin("ESP32", false); 
+  prefBootCount = myPreferences.getUInt("BootCount", 0);
+  prefBootCount++;
+  myPreferences.putUInt("BootCount", prefBootCount);
+  myPreferences.end();
+  getPreferences(); 
+// WiFi
   String strHostName = WiFi.macAddress();
   strHostName.replace(":", "-");
   strHostName.toLowerCase();
   strHostName = "tl-" + strHostName.substring(9);
   strHostName.toCharArray(chrHostName, 12);
   if (C_Debug_Level >= 1) {
+    Serial.print("WiFi Settings \n");
     Serial.print("WiFi MAC: ");
     Serial.println(WiFi.macAddress());
     Serial.print("WiFi Hostname: ");
     Serial.println(chrHostName);
   }
-  // GPIO
+//  WiFiManager wifiManager;
+  if (C_Debug_Level < 4) wifiManager.setDebugOutput(false); 
+  wifiManager.addParameter(&wmp_atem_name);
+  wifiManager.addParameter(&wmp_atem_ipv4);  
+  wifiManager.setHostname(chrHostName);
+// Timeout
+  intTimeOutMin = 9 - C_Debug_Level;
+  if (intTimeOutMin < 0) intTimeOutMin = 0;
+  intTimeOutSec = 0;
+  if (intTimeOutMin == 0) intTimeOutSec = 10;
+  intTimeOut = (intTimeOutMin * 60) + intTimeOutSec;
   return;
+// GPIO
   pinMode(26, INPUT); // PIN  (INPUT, OUTPUT, ANALOG)
   pinMode(36, INPUT); // PIN  (INPUT,       , ANALOG)
   pinMode( 0, INPUT); // PIN  (INPUT, OUTPUT,       )
@@ -135,9 +199,11 @@ void loop() {
 void checkEvents() {
   // Check for M5Stick Buttons
   checkM5Events();
-  // Check for Setup and WiFi
-//  while (intSetupMode != 0) checkCommunication();
-  checkSetup();
+  // Check for Setup 
+  if (intSetupPage != 0) checkSetup();
+  if (intSetupPage != 0) return;
+  // Check for WiFi
+  checkLoop();
   // Check for packets, respond to them etc. Keeping the connection alive!
   myAtemSwitcher.runLoop();
 }
@@ -152,13 +218,15 @@ void checkM5Events() {
   }
   if (M5.BtnA.wasPressed()) {
     if (C_Debug_Level >= 3) Serial.println("M5.BtnA.wasPressed");
-    intCameraNumber = (intCameraNumber % 8) + 1;
+    intCameraNumber = (intCameraNumber % intAtemInputs) + 1;
     if (C_Debug_Level >= 2) Serial.printf("ATEM next Camera Number: %d\n", intCameraNumber);
     lngButtonAMillis = millis();
   }
   if (M5.BtnA.isPressed() && lngButtonAMillis != 0 && millis() - lngButtonAMillis >= 500 ) {
     if (C_Debug_Level >= 3) Serial.println("M5.BtnA.isPressed");
     restartESP();
+    intSetupPage = 1;
+    return;
   }
   if (M5.BtnB.wasPressed()) {
     if (C_Debug_Level >= 3) Serial.println("M5.BtnB.wasPressed");
@@ -175,48 +243,21 @@ void checkM5Events() {
   }
 }
 
-void checkSetup() {
-  if ((intSetupMode == 0) && (WiFi.status() == WL_CONNECTED)) return;
-  if (C_Debug_Level >= 2) {
-    Serial.printf("\nStarting Setup Mode %d\n", intSetupMode);
-  }
-  if (intSetupMode == 0) drawLabel(strLcdText, GRAY, BLACK, HIGH);
-  if (intSetupMode != 0) initM5();
-  if (intSetupMode == 1) {
-    stopWiFi();
-    printM5Info();
-    waitBtnA(1);
-    if (intSetupMode == 1) return;
-    if (intSetupMode == 0) {
-      if (C_Debug_Level >= 1) Serial.println("M5 PowerOff");
-      Serial.flush();
-      M5.Axp.PowerOff();
-    }
-  }
-  startWiFi();
-  if (intSetupMode == 2) {
-//    startOTA();
-//  printOTAInfo();
-    startWebServer();
-    waitBtnA(2);
-    stopWebServer();
-    if (intSetupMode <= 2) return;
-  }
-  if (intSetupMode == 3) {
-    startAtem();
-    waitBtnA(3);
-    if (intSetupMode <= 3) return;
-  }
+void checkLoop() {
+  if (WiFi.status() == WL_CONNECTED) return;
+  waitWiFi();
+  initM5Lcd();
   intCameraNumberPrevious = 0;
-  if (C_Debug_Level >= 2) {
-    Serial.println("ATEM last Camera Number: 0");
+}
+
+void flashLED() {
+  clearM5Lcd(0);
+  for (int i = 6; i > 0; i--) {
+    digitalWrite(LED_PIN, LOW);
+    delay(100);
+    digitalWrite(LED_PIN, HIGH);
+    delay(i * 100);
   }
-  if (intSetupMode == 0) return;
-  intCameraNumber = 1;
-  if (C_Debug_Level >= 1) {
-    Serial.println("ATEM next Camera Number: 1");
-  }
-  intSetupMode = 0;
 }
 
 void restartESP() {
@@ -224,29 +265,167 @@ void restartESP() {
   stopWiFi();
   if (C_Debug_Level >= 3) Serial.println("M5 Restart");
   Serial.flush();
+  flashLED();
   ESP.restart();
 }
 
-void waitBtnA(int int1) {
-  int intTimeout = C_Timeout + 1;
+void stopESP() {
+  if (C_Debug_Level >= 1) Serial.println("M5 PowerOff");
+  Serial.flush();
+  flashLED();
+  M5.Axp.PowerOff();
+}
+
+void stopWiFi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFi.disconnect();
+    delay(500);
+  }
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+  if (C_Debug_Level >= 1) {
+    Serial.println("WiFi stopped");
+  }
+  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
+}
+
+bool waitWiFi() {
+/*
+typedef enum {
+    WL_NO_SHIELD        = 255,   // for compatibility with WiFi Shield library
+    WL_IDLE_STATUS      = 0,
+    WL_NO_SSID_AVAIL    = 1,
+    WL_SCAN_COMPLETED   = 2,
+    WL_CONNECTED        = 3,
+    WL_CONNECT_FAILED   = 4,
+    WL_CONNECTION_LOST  = 5,
+    WL_DISCONNECTED     = 6
+} wl_status_t;  
+*/
+  if (C_Debug_Level >= 2) Serial.println("Waiting for WiFi");
+  int intLoop = 0;
+  int intMillis = 0;
+  int iTimeOut = intTimeOut - 1;
+  unsigned long lngMillis = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    if (iTimeOut <= 0) {
+      if (C_Debug_Level >= 3) Serial.println("\nM5 TimeOut");
+      restartESP();
+    }
+    iTimeOut = iTimeOut - 2;
+    if (C_Debug_Level >= 2) Serial.print(".");
+    if (C_Debug_Level >= 3) Serial.print(WiFi.status());
+    drawLabel(String(iTimeOut / 60 + 1), RED, BLACK, LOW);
+    digitalWrite(LED_PIN, LOW);
+    delay(100);
+    drawLabel(strLcdText, WHITE, BLACK, HIGH);
+    digitalWrite(LED_PIN, HIGH);
+    intMillis = millis();
+    lngMillis = millis();
+    while (millis() - lngMillis < 2000) {
+      if (WiFi.status() == WL_CONNECTED) lngMillis = 0;
+      if (M5.BtnA.isPressed() && millis() - intMillis >= 500 ) {
+        if (C_Debug_Level >= 3) Serial.println("\nM5.BtnA.isPressed");
+        restartESP();
+      }
+      M5.update();
+      if (isConfigPortalActive == true) wifiManager.process();
+    }
+    intLoop++;
+    if (intLoop % 30 == 0) {
+      if (C_Debug_Level >= 2) Serial.println();
+    }
+  }
+  if (C_Debug_Level >= 2) Serial.println("WiFi connected");
+  return true;
+}
+
+void checkSetup() {
+  intSetupCount++;
+  if (C_Debug_Level >= 2) {
+    Serial.printf("\nStarting Setup Mode %d at Count %d\n", intSetupPage, intSetupCount);
+  }
+  initM5Lcd();
+  intSetupLoop = 0;
+  if (intSetupPage == 1) stopWiFi();
+  while (intSetupPage == 1) {
+    printM5Info();
+    waitButton(intSetupPage);
+    if (intSetupPage < 1) stopESP();
+    intSetupLoop++;
+  }
+  intSetupLoop = 0;
+  while (intSetupPage == 2) {
+    getAtemName();
+    waitButton(intSetupPage);
+    if (intSetupPage < 2) {
+      clearPreferences();
+      return;
+    }
+    if (intSetupPage > 2) setAtemName();
+    intSetupLoop++;
+  }
+  while (intSetupPage == 3) {
+    startWiFiManager();
+    waitButton(intSetupPage);
+    if (intSetupPage < 3) {
+      if (C_Debug_Level >= 1) Serial.println("WM.resetSettings");
+      wifiManager.resetSettings();
+      return;
+    }
+  }
+  startWiFi();
+  while (intSetupPage == 4) {
+    startWebServer();
+    waitButton(intSetupPage);
+    stopWebServer();
+    if (intSetupPage < 4) return;
+    if (intSetupPage == 4) delay(1000);
+  }
+  intAtemDNS = 0;
+  while (intSetupPage == 5) {
+    getAtemDNS();
+    waitButton(intSetupPage);
+    if (intSetupPage < 5) return;
+  }
+  startAtem();
+  intCameraNumberPrevious = 0;
+  if (C_Debug_Level >= 2) {
+    Serial.println("ATEM last Camera Number: 0");
+  }
+  intCameraNumber = 1;
+  if (C_Debug_Level >= 1) {
+    Serial.println("ATEM next Camera Number: 1");
+  }
+  savePreferences();
+  intSetupPage = 0;
+}
+
+void waitButton(int i1) {
+  int iTimeOut = intTimeOut;
   int intLedState = HIGH;
   unsigned long lngIntervall = 0;
   unsigned long lngMillis = 0;
 //  digitalWrite(LED_PIN, LOW);
-  if (C_Debug_Level >= 2) Serial.printf("M5 waiting for BtnA at Setup Mode %d\n", intSetupMode);
+  if (C_Debug_Level >= 2) Serial.printf("M5 waiting for BtnA at Setup Mode %d\n", intSetupPage);
   M5.Lcd.setTextColor(WHITE);
-  switch (int1) {
+  M5.Lcd.println();
+  switch (i1) {
     case 0:
       M5.Lcd.print(" Reboot mit ");
       break;
-    case 1:
-      M5.Lcd.print("  USB Update oder ");
+    case 3:
+      if (isConfigPortalActive) {
+        M5.Lcd.print(" auf Eingaben und/oder ");
+      } else {
+        M5.Lcd.print(" Weiter mit ");
+      }
       break;
-    case 2:
+    case 4:
       M5.Lcd.print(" HTTP Update oder ");
       break;
-    case 3:
-      M5.Lcd.print(" Weiter mit ");
+    default:
+      M5.Lcd.print(" Auswahl oder ");
       break;
   }
   M5.Lcd.setTextColor(ORANGE);
@@ -257,24 +436,25 @@ void waitBtnA(int int1) {
       lngMillis = millis();
       if (intLedState == HIGH) {
         intLedState = LOW;
-//        if (C_Debug_Level >= 3) Serial.println("M5 GPIO10 LOW=" + String(digitalRead(10)));
         lngIntervall = 10000;
       } else {
         intLedState = HIGH;     
-//        if (C_Debug_Level >= 3) Serial.println("M5 GPIO10 HIGH=" + String(digitalRead(10)));
         lngIntervall = 50000;
-        intTimeout--;
+        iTimeOut = iTimeOut - 60;
       }
-      if (intTimeout <= 0) {
-        intSetupMode--;
-        if (C_Debug_Level >= 1) Serial.println("M5 Fallback to Setup " + String(intSetupMode));
-        return;
+      if (iTimeOut <= 0) {
+        if (C_Debug_Level >= 1) Serial.println("M5 Timeout");
+        intSetupPage--;
+        if (intSetupPage <= 0) stopESP();
+        restartESP();
       }
       digitalWrite(LED_PIN, intLedState);
     }
     M5.update();
-    if (intSetupMode >= 2) myWebServer.handleClient(); 
-    if (intSetupMode >= 3) myAtemSwitcher.runLoop();
+    if (checkBtnB(i1) == true) return;
+    if (isConfigPortalActive == true) wifiManager.process(); 
+    if (i1 >= 4) myWebServer.handleClient(); 
+    if (i1 >= 5) myAtemSwitcher.runLoop();
   }
   if (C_Debug_Level >= 3) Serial.println("M5.BtnA.wasPressed");
   digitalWrite(LED_PIN, HIGH);
@@ -284,15 +464,32 @@ void waitBtnA(int int1) {
     if (millis() - lngMillis >= 500) {
       if (C_Debug_Level >= 3) Serial.println("M5.BtnA.isPressed");
 //      if (C_Debug_Level >= 3) Serial.println("M5 GPIO39=" + String(digitalRead(39)));
+      intSetupPage--;
       return;
     }
     M5.update();
   }
   lngButtonAMillis = 0;
-  intSetupMode++;
+  intSetupPage++;
+  return;
 }
 
-void initM5() {
+bool checkBtnB(int i1) {
+  if (M5.BtnB.wasPressed() == false) return false;  
+  if (C_Debug_Level >= 3) Serial.println("M5.BtnB.wasPressed");
+  switch (i1) {
+    case 1:
+      return true;
+    case 2:
+      return true;
+    case 5:
+      return true;
+    default:
+      return false;
+  }
+}
+
+void initM5Lcd() {
   // Initialize Display
   if (C_Debug_Level >= 2) Serial.println("M5 initializing Display");
   // Lcd display test
@@ -318,18 +515,66 @@ void initM5() {
   M5.Lcd.setTextSize(1);
 }
 
-void printM5Info() {
-  if (C_Debug_Level >= 2) {
-    Serial.printf("M5 LCD Size %s\n", strLcdSize);
-    Serial.printf("M5 Akku %.3fV\n", M5.Axp.GetBatVoltage());  
-  }
+void clearM5Lcd(int i1) {
+  digitalWrite(LED_PIN, HIGH);
   M5.Lcd.fillScreen(BLACK);
+  if (i1 == 0) return;
   delay(100);
   M5.Lcd.setCursor(0, 0);
   #ifdef M5STICKCPLUS 
     M5.Lcd.println(); 
   #endif
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.printf(" %d\.%d", intSetupCount, intSetupPage);
+}
+
+void printM5Info() {
+    if (intSetupLoop == 0) printM5Info1();
+    if (intSetupLoop != 0) {
+      intTimeOutSec = 0;
+      intTimeOutMin++;
+      if (intTimeOutMin > 9) intTimeOutMin = 0;
+      if (intTimeOutMin == 0) intTimeOutSec = 10;
+      intTimeOut = (intTimeOutMin * 60) + intTimeOutSec;
+    }
+    printM5Info2();
+}
+
+void printM5Info1() {
+  if (C_Debug_Level >= 2) {
+    Serial.printf("M5 LCD Size %s\n", strLcdSize);
+    Serial.printf("M5 Akku %.3fV\n", M5.Axp.GetBatVoltage());  
+    Serial.printf("WiFi Status %d\n", WiFi.status());  
+  }
+}
+
+void printM5Info2() {
+  if (C_Debug_Level >= 2) {
+    Serial.printf("TALLY TimeOut: %d:%02d\n", intTimeOutMin, intTimeOutSec);
+  }
+  clearM5Lcd(intSetupPage);
   M5.Lcd.printf(" %s %s\n\n", C_Pgm_Name, C_Pgm_Version);
+  M5.Lcd.printf(" Boot Nr. %d", prefBootCount);  
+  M5.Lcd.print(" Akku ");  
+  double dblBat = M5.Axp.GetBatVoltage(); 
+  if (dblBat < 3.5) M5.Lcd.setTextColor(YELLOW);
+  M5.Lcd.printf("%sV\n\n", String(dblBat));  
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.print(" Zeit ");
+  M5.Lcd.setTextColor(GREEN);
+  M5.Lcd.printf("%d:%02d", intTimeOutMin, intTimeOutSec);
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.print(" bis TimeOut\n\n");
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.print(" WiFi ");
+    if (WiFi.status() != WL_NO_SHIELD) {
+      M5.Lcd.print("eingeschaltet\n");
+    } else {
+      M5.Lcd.setTextColor(YELLOW);
+      M5.Lcd.print("ausgeschaltet\n");
+    }
+    M5.Lcd.println(); 
+  #endif
   M5.Lcd.setTextColor(ORANGE);
   M5.Lcd.print("   M5"); 
   M5.Lcd.setTextColor(WHITE);
@@ -340,71 +585,204 @@ void printM5Info() {
   M5.Lcd.setTextColor(ORANGE);
   M5.Lcd.print(" BtnB"); 
   M5.Lcd.setTextColor(WHITE);
-  M5.Lcd.print(" Ausrichtung\n\n");
-  M5.Lcd.print(" Akku ");  
-  double dblBat = M5.Axp.GetBatVoltage(); 
-  if (dblBat < 3.5) M5.Lcd.setTextColor(RED);
-  if (dblBat >= 4) M5.Lcd.setTextColor(GREEN);
-  M5.Lcd.printf("%sV\n", String(dblBat));  
+  M5.Lcd.print(" Auswahl/Ausrichtung\n");
+}
+
+void getAtemName() {
+  if (intSetupLoop == 0) {
+    intAtemNr = 0;
+    prefAtemName.toCharArray(arr_AtemName_0, sizeof(arr_AtemName_0));
+    prefAtemIPv4.toCharArray(arr_AtemIPv4_0, sizeof(arr_AtemIPv4_0));
+    arr_AtemInputs[0] = prefAtemInputs;
+  }
+  if (intSetupLoop != 0) {
+    intAtemNr++;
+    if (intAtemNr >= C_AtemNameSize) intAtemNr = 0;
+  }
+  printAtemNameInfo1();
+  for (int i = 0; i < C_AtemNameSize; i++) {
+    if (printAtemNameInfo2(i) == false) {
+      if (intAtemNr == 0) intAtemNr++;
+    }
+  }
+}
+
+void setAtemName() {
+  if (intAtemNr != 0) {
+    strlcpy(arr_AtemName_0, arr_AtemName[intAtemNr], sizeof(arr_AtemName_0));
+    strlcpy(arr_AtemIPv4_0, arr_AtemIPv4[intAtemNr], sizeof(arr_AtemIPv4_0));
+    intAtemInputs = arr_AtemInputs[intAtemNr];
+    arr_AtemInputs[0] = intAtemInputs;
+  }
+/*  if (intAtemNr != 0) {
+    strlcpy(arr_AtemName[0], chrAtemName, sizeof(chrAtemName));
+    strlcpy(arr_AtemIPv4[0], chrAtemIPv4, sizeof(chrAtemIPv4));
+    arr_AtemInputs[0] = intAtemInputs;
+    arr_AtemName[0] = chrAtemName;
+    arr_AtemIPv4[0] = chrAtemIPv4;*/
+  if (C_Debug_Level >= 1) {
+    Serial.printf("ATEM Nr. %d %s ", intAtemNr, arr_AtemName_0);
+    Serial.printf("on %s with %d Inputs selected\n", arr_AtemIPv4_0, intAtemInputs);
+  }
+}
+
+void printAtemNameInfo1() {
+  if (C_Debug_Level >= 2) Serial.printf("ATEM new Number: %d\n", intAtemNr);
+  clearM5Lcd(intSetupPage);
+  M5.Lcd.print(" ATEM Auswahl mit ");
+  M5.Lcd.setTextColor(ORANGE);
+  M5.Lcd.print("BtnB\n\n");
+}
+
+bool printAtemNameInfo2(int i1) {
+//  String sText = arr_AtemName[i1];
+//  int iLength = sText.length();
+  strlcpy(chrAtemName, arr_AtemName[i1], sizeof(chrAtemName));
+  strlcpy(chrAtemIPv4, arr_AtemIPv4[i1], sizeof(chrAtemIPv4));
+  intAtemInputs = arr_AtemInputs[i1];
+  unsigned int iLen = strlen(chrAtemName);
+  if ((C_Debug_Level >= 1) && (intSetupLoop == 0)) {
+    Serial.printf("ATEM Nr. %d %s[%d] ", i1, chrAtemName, iLen);
+    Serial.printf("on %s with %d Inputs\n", chrAtemIPv4, intAtemInputs);
+  }
+  M5.Lcd.setTextColor(WHITE);
+  if (iLen == 0) {
+    return false;
+  }
+  if (i1 == intAtemNr) M5.Lcd.setTextColor(GREEN);
+  M5.Lcd.printf(" %d %s ", intAtemInputs, chrAtemName);
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(chrAtemIPv4);
+  #endif
+  M5.Lcd.println();
+  return true;
+}
+
+void startWiFiManager() {
+  if ((intSetupPage > 3) && (WiFi.status() == WL_CONNECTED)) return;
+  wifiManager.setAPStaticIPConfig(IPAddress(192,168,5,1), IPAddress(192,168,5,1), IPAddress(255,255,255,0));
+  wifiManager.setConfigPortalBlocking(false);
+  wifiManager.setConfigPortalTimeout(intTimeOut);
+  wifiManager.setAPCallback(wm_configModeCallback);
+  wifiManager.setSaveConfigCallback(wm_saveConfigCallback);
+  printManagerInfo1();
+// id/name, placeholder/prompt, default, length
+//  strlcpy(chrAtemName, arr_AtemName[0], sizeof(chrAtemName));
+  wmp_atem_name.setValue(arr_AtemName_0, (sizeof(arr_AtemName_0) - 1));
+//  strlcpy(chrAtemIPv4, arr_AtemIPv4[0], sizeof(chrAtemIPv4));
+  wmp_atem_ipv4.setValue(arr_AtemIPv4_0, (sizeof(arr_AtemIPv4_0) - 1));
+//  wifiManager.autoConnect(C_AP_SSID);
+//  wifiManager.startConfigPortal(C_AP_SSID);
+  if (intSetupCount == 1) {
+    isConfigPortalStarted = false;
+    isConfigPortalActive = false;
+    wifiManager.autoConnect(C_AP_SSID);
+  } else {
+    isConfigPortalStarted = true;
+    isConfigPortalActive = false;
+    wifiManager.startConfigPortal(C_AP_SSID);
+  }
+  waitWiFi();
+  if (isConfigPortalStarted == true) {
+    waitButton(intSetupPage);
+    if (isConfigPortalActive == true) wifiManager.stopConfigPortal();
+    delay(1000);
+  }
+  isConfigPortalActive = false;
+  printManagerInfo2();
+}
+
+void printManagerInfo1() {
+  Serial.println("WM starting with");
+  Serial.printf("WM TimeOut %d:%02d\n", intTimeOutMin, intTimeOutSec);
+  Serial.printf("WM ATEM Name %s\n", arr_AtemName_0);
+  Serial.printf("WM ATEM IPv4 %s\n", arr_AtemIPv4_0);
+  clearM5Lcd(intSetupPage);
+  M5.Lcd.print(" WiFi Manager\n\n");
+  M5.Lcd.printf(" TimeOut %d:%02d Minute(n)\n", intTimeOutMin, intTimeOutSec);
+}
+
+void wm_configModeCallback (WiFiManager *myWiFiManager) {
+  isConfigPortalActive = true;
+  Serial.println("WM Entered config mode on");
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+  Serial.println(WiFi.softAPIP());
+  clearM5Lcd(intSetupPage);
+  M5.Lcd.print(" WiFi Manager\n\n");
+  M5.Lcd.setTextColor(GREEN);
+  M5.Lcd.print(" wartet unter\n\n");
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.print(" SSID ");
+  M5.Lcd.println(myWiFiManager->getConfigPortalSSID());
   #ifdef M5STICKCPLUS 
     M5.Lcd.println(); 
   #endif
-  M5.Lcd.setTextColor(WHITE);
-  M5.Lcd.print(" WiFi ausgeschaltet\n\n");
-  M5.update();
+  M5.Lcd.print(" IPv4 ");
+  M5.Lcd.println(WiFi.softAPIP());
 }
 
-void stopWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFi.disconnect();
-    delay(500);
-  }
-  WiFi.mode(WIFI_OFF);
-  delay(500);
+//callback notifying us of the need to save config
+void wm_saveConfigCallback () {
+  isConfigPortalActive = false;
+//  wmSaveConfig = true;
+  Serial.print("\nWM saveconfigCallback\n");
+  Serial.printf("WM %s=%s\n", wmp_atem_name.getID(), wmp_atem_name.getValue());
+  Serial.printf("WM %s=%s\n", wmp_atem_ipv4.getID(), wmp_atem_ipv4.getValue());
+  strcpy(arr_AtemName_0, wmp_atem_name.getValue());
+//  strcpy(chrAtemName, wmp_atem_name.getValue());
+//  strlcpy(arr_AtemName[0], chrAtemName, sizeof(chrAtemName));
+  strcpy(arr_AtemIPv4_0, wmp_atem_ipv4.getValue());
+//  strcpy(chrAtemIPv4, wmp_atem_ipv4.getValue());
+//  arr_AtemIPv4[0] = chrAtemIPv4;
+//  strlcpy(arr_AtemIPv4[0], chrAtemIPv4, sizeof(chrAtemIPv4));
+  Serial.print("WM saveconfigCallback done\n");
+}
+
+void printManagerInfo2() {
   if (C_Debug_Level >= 1) {
-    Serial.println("WiFi stopped");
+    Serial.println("WiFiManager ready");
   }
+  WiFi.SSID().toCharArray(chrWiFiSSID, sizeof(chrWiFiSSID));
+  if (C_Debug_Level >= 2) {
+    Serial.print("WiFi SSID ");
+    Serial.println(chrWiFiSSID);
+    Serial.print("ATEM Name ");
+    Serial.println(arr_AtemName_0);
+    Serial.print("ATEM IPv4 ");
+    Serial.println(arr_AtemIPv4_0);
+  }
+  clearM5Lcd(intSetupPage);
+  M5.Lcd.print(" WiFi Manager\n\n");
+  M5.Lcd.print(" SSID ");
+  M5.Lcd.println(chrWiFiSSID);
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(); 
+  #endif
+  M5.Lcd.print(" IPv4 ");
+  M5.Lcd.println(WiFi.localIP());
+  M5.Lcd.println();
+  M5.Lcd.printf(" ATEM %s\n", arr_AtemName_0);
+  #ifdef M5STICKCPLUS 
+    M5.Lcd.println(); 
+  #endif
+  M5.Lcd.print(" IPv4 ");
+  if (!ipAtem.fromString(arr_AtemIPv4_0)) M5.Lcd.setTextColor(RED);
+  M5.Lcd.println(arr_AtemIPv4_0);
 }
 
 void startWiFi() {
-/*
-typedef enum {
-    WL_NO_SHIELD        = 255,   // for compatibility with WiFi Shield library
-    WL_IDLE_STATUS      = 0,
-    WL_NO_SSID_AVAIL    = 1,
-    WL_SCAN_COMPLETED   = 2,
-    WL_CONNECTED        = 3,
-    WL_CONNECT_FAILED   = 4,
-    WL_CONNECTION_LOST  = 5,
-    WL_DISCONNECTED     = 6
-} wl_status_t;  
-*/
-  if ((intSetupMode == 0) && (WiFi.status() == WL_CONNECTED)) return;
-  if ((intSetupMode > 2) && (WiFi.status() == WL_CONNECTED)) return;
-  if (intSetupMode > 2) intSetupMode = 2;
+  if ((intSetupPage > 4) && (WiFi.status() == WL_CONNECTED)) return;
+  if (intSetupPage > 4) intSetupPage = 4;
   printWiFiInfo1();
   int intLoop = 0;
   int intMillis = 0;
-  int intTimeout = C_Timeout + 1;
+  int iTimeOut = intTimeOut;
   unsigned long lngMillis = 0;
   while (WiFi.status() != WL_CONNECTED) {
-    if (intLoop % 20 == 0) {
-      digitalWrite(LED_PIN, LOW);
-      stopWiFi();
-      intTimeout--;
-      if (intTimeout <= 0) {
-        restartESP();
-      }
-      digitalWrite(LED_PIN, HIGH);
-      delay(1000);
-      WiFi.mode(WIFI_STA);
-      delay(1000);
-      WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
-      WiFi.setHostname(chrHostName);  
-      WiFi.persistent(false);
-      WiFi.begin(C_WiFi_SSID, C_WiFi_Pwd);
-      delay(1000);
+    if (iTimeOut <= 0) {
+      restartESP();
     }
+    iTimeOut = iTimeOut - 2;
     if (C_Debug_Level >= 2) Serial.print(".");
     if (C_Debug_Level >= 3) Serial.print(WiFi.status());
     drawLabel(strLcdText, RED, BLACK, LOW);
@@ -414,7 +792,7 @@ typedef enum {
     digitalWrite(LED_PIN, HIGH);
     intMillis = millis();
     lngMillis = millis();
-    while (millis() - lngMillis < 3000) {
+    while (millis() - lngMillis < 2000) {
       if (WiFi.status() == WL_CONNECTED) lngMillis = 0;
       if (M5.BtnA.isPressed() && millis() - intMillis >= 500 ) {
         if (C_Debug_Level >= 3) Serial.println("M5.BtnA.isPressed");
@@ -423,7 +801,7 @@ typedef enum {
       M5.update();
     }
     intLoop++;
-    if (intLoop % 20 == 0) {
+    if (intLoop % 30 == 0) {
       if (C_Debug_Level >= 2) Serial.println();
     }
   }
@@ -437,15 +815,10 @@ void printWiFiInfo1() {
   }
   if (C_Debug_Level >= 2) {
 //    Serial.printf("WiFi Name: %s\n", chrHostName);
-    Serial.printf("WiFi connecting to %s\n", C_WiFi_SSID);
+    Serial.printf("WiFi connecting to %s\n", chrWiFiSSID);
   }
-  if (intSetupMode != 2) return;
-  M5.Lcd.fillScreen(BLACK);
-  delay(100);
-  M5.Lcd.setCursor(0, 0);
-  #ifdef M5STICKCPLUS 
-    M5.Lcd.println(); 
-  #endif
+  if (intSetupPage != 4) return;
+  clearM5Lcd(intSetupPage);
   M5.Lcd.print(" WiFi Einstellungen\n\n");
   // MAC address
   M5.Lcd.print("  MAC ");
@@ -455,7 +828,9 @@ void printWiFiInfo1() {
     M5.Lcd.println(); 
   #endif
   M5.Lcd.printf(" NAME %s\n\n", chrHostName);
-  M5.Lcd.printf(" SSID %s\n", C_WiFi_SSID);
+  M5.Lcd.print(" SSID ");
+  M5.Lcd.print(chrWiFiSSID);
+  M5.Lcd.println();
   #ifdef M5STICKCPLUS 
     M5.Lcd.println(); 
   #endif
@@ -468,75 +843,143 @@ void printWiFiInfo2() {
     Serial.println();  
   }
   if (C_Debug_Level >= 1) {
-    Serial.printf("WiFi connected to %s\n", C_WiFi_SSID);
+    Serial.print("WiFi connected to ");
+    Serial.println(chrWiFiSSID);
     Serial.print("WiFi IPv4: ");
     Serial.println(ip);  
     Serial.print("WiFi Signal strength: ");
     Serial.println(WiFi.RSSI());  
   }
-  if (intSetupMode != 2) return;
+  if (intSetupPage != 4) return;
   M5.Lcd.print(" IPv4 ");
   M5.Lcd.println(ip);
-  M5.Lcd.println(); 
   M5.update();
+}
+
+void getAtemDNS() {
+  // Connecting AtemSwitcher
+  int rcDNS;
+  if (intAtemDNS == 0) {
+//    intAtemInputs = arr_AtemInputs[0];
+//    strlcpy(chrAtemName, arr_AtemName[0], sizeof(chrAtemName));
+//    strlcpy(chrAtemIPv4, arr_AtemIPv4[0], sizeof(chrAtemIPv4));
+//    rcDNS = WiFi.hostByName(chrAtemName, ipAtemDNS);
+    rcDNS = WiFi.hostByName(arr_AtemName_0, ipAtemDNS);
+    if (rcDNS != 1) intAtemDNS++;
+    printAtemDNSInfo1(rcDNS);
+  }
+  intAtemDNS++;
+  if (intAtemDNS >= 3) intAtemDNS = 1;
+  if (intAtemDNS == 1) {
+    ipAtem = ipAtemDNS;
+  } else {
+    ipAtem.fromString(arr_AtemIPv4_0);
+  }
+  printAtemDNSInfo2(intAtemDNS, rcDNS);
+}
+
+void printAtemDNSInfo1(int i1) {
+  if (C_Debug_Level >= 1) {
+    Serial.print("ATEM DNS: ");
+    Serial.println(i1); 
+    Serial.print("ATEM DNS IPv4: ");
+    Serial.println(ipAtemDNS);
+  }
+}
+
+void printAtemDNSInfo2(int i1, int i2) {
+  if (C_Debug_Level >= 2) {
+    Serial.print("ATEM DNS IPv4: ");
+    Serial.print(ipAtem);
+    Serial.println(" selected");
+  }
+  clearM5Lcd(intSetupPage);
+  M5.Lcd.print(" ATEM Einstellungen\n\n");
+  M5.Lcd.printf(" NAME %s\n\n", arr_AtemName_0);
+  M5.Lcd.print("  DNS ");
+  if (i1 == 1) M5.Lcd.setTextColor(GREEN);
+  if ((i1 == 1) && (i2 != 1)) M5.Lcd.setTextColor(RED);
+  M5.Lcd.println(ipAtemDNS);
+  M5.Lcd.println();
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.print(" oder ");
+  if (i1 != 1) M5.Lcd.setTextColor(GREEN);
+  M5.Lcd.println(arr_AtemIPv4_0);
+  M5.Lcd.setTextColor(WHITE);
 }
 
 void startAtem() {
-  // Connecting AtemSwitcher
-  IPAddress ipDNS(0, 0, 0, 0);
-  printAtemInfo1();
-  int intRC = WiFi.hostByName(C_Atem_Name, ipDNS);
-  if (intRC == 1) ipAtem = ipDNS;
-  printAtemInfo2(intRC);
+  String sText = ipAtem.toString();
+  sText.toCharArray(arr_AtemIPv4_0, sizeof(arr_AtemIPv4_0));
+//  sText.toCharArray(chrAtemIPv4, sizeof(chrAtemIPv4));
+//  strlcpy(arr_AtemIPv4[0], chrAtemIPv4, sizeof(chrAtemIPv4));
+//  arr_AtemIPv4[0] = chrAtemIPv4;
   myAtemSwitcher.begin(ipAtem);
-  if (C_Debug_Level >= 4) myAtemSwitcher.serialOutput(0x80);
+  if (C_Debug_Level >= 5) myAtemSwitcher.serialOutput(0x80);
   myAtemSwitcher.connect();
-  printAtemInfo3();
-}
-
-void printAtemInfo1() {
-  if (intSetupMode == 0) return;
-  M5.Lcd.fillScreen(BLACK);
-  delay(1000);
-  M5.Lcd.setCursor(0, 0);
-  #ifdef M5STICKCPLUS 
-    M5.Lcd.println(); 
-  #endif
-  M5.Lcd.print(" ATEM Einstellungen\n\n");
-  M5.Lcd.printf(" NAME %s\n\n", C_Atem_Name);
-  M5.update();
-}
-
-void printAtemInfo2(int int1) {
+  intAtemInputs = arr_AtemInputs[0];
   if (C_Debug_Level >= 1) {
-    Serial.print("ATEM DNS: ");
-    Serial.println(int1); 
-    Serial.print("ATEM IPv4: ");
-    Serial.println(ipAtem);
+    Serial.printf("Atem.begin done with %d Inputs\n", intAtemInputs);
   }
-  if (intSetupMode == 0) return;
-  M5.Lcd.setTextColor(GREEN);
-  if (int1 != 1) M5.Lcd.setTextColor(YELLOW);
-  M5.Lcd.print("  DNS ");
-  M5.Lcd.println(int1);
-  M5.Lcd.println();
-  M5.Lcd.print(" IPv4 ");
-  M5.Lcd.println(ipAtem);
-  M5.Lcd.println();
-  M5.Lcd.setTextColor(WHITE);
-  M5.update();
 }
 
-void printAtemInfo3() {
+void clearPreferences() {
+  if (C_Debug_Level >= 1) Serial.println("Preferences.clear");
+  myPreferences.begin(C_Pref_Section, false); 
+  myPreferences.clear();  
+  prefAtemName = "";
+  prefAtemIPv4 = "0.0.0.0";
+  prefAtemInputs = 1;
+  myPreferences.end(); 
+}
+
+void getPreferences() {
+  myPreferences.begin(C_Pref_Section, false); 
+  strlcpy(chrAtemName, arr_AtemName[0], sizeof(chrAtemName));
+  prefAtemName = myPreferences.getString("AtemName", chrAtemName);
+  strlcpy(chrAtemIPv4, arr_AtemIPv4[0], sizeof(chrAtemIPv4));
+  prefAtemIPv4 = myPreferences.getString("AtemIPv4", chrAtemIPv4);
+  intAtemInputs = arr_AtemInputs[0];
+  prefAtemInputs = myPreferences.getUInt("AtemInputs", intAtemInputs);
+  myPreferences.end(); 
   if (C_Debug_Level >= 1) {
-    Serial.println("Atem.begin done");
+    Serial.print("\nPreferences \n");
+    Serial.printf("ATEM Name: %s -> ", chrAtemName);
+    Serial.println(prefAtemName);
+    Serial.printf("ATEM IPv4: %s -> ", chrAtemIPv4);
+    Serial.println(prefAtemIPv4);
+    Serial.printf("ATEM Inputs: %d -> ", intAtemInputs);
+    Serial.println(prefAtemInputs);
   }
-  if (intSetupMode == 0) return;
+}
+
+void savePreferences() {
+  int i;
+  char oldPref[16];
+  char newPref[16];
+  Serial.println("Save Preferences");
+  myPreferences.begin(C_Pref_Section, false); 
+  prefAtemName.toCharArray(oldPref, sizeof(oldPref));
+//  strlcpy(newPref, arr_AtemName[0], sizeof(newPref));
+  strlcpy(newPref, arr_AtemName_0, sizeof(newPref));
+  i = strcmp(oldPref, newPref);
+  Serial.printf("ATEM Name %d: %s(%d) -> %s(%d)\n", i, oldPref, sizeof(oldPref), newPref, sizeof(newPref));
+  if (i != 0) myPreferences.putString("AtemName", newPref);
+  prefAtemIPv4.toCharArray(oldPref, sizeof(oldPref));
+//  strlcpy(newPref, arr_AtemIPv4[0], sizeof(newPref));
+  strlcpy(newPref, arr_AtemIPv4_0, sizeof(newPref));
+  i = strcmp(oldPref, newPref);
+  Serial.printf("ATEM IPv4 %d: %s(%d) -> %s(%d)\n", i, oldPref, sizeof(oldPref), newPref, sizeof(newPref));
+  if (i != 0) myPreferences.putString("AtemIPv4", newPref);
+  intAtemInputs = arr_AtemInputs[0];
+  Serial.printf("ATEM Inputs: %d -> %d\n", prefAtemInputs, intAtemInputs);
+  if (prefAtemInputs != intAtemInputs) myPreferences.putUInt("AtemInputs", intAtemInputs);
+  myPreferences.end(); 
 }
 
 void drawLabel(String labelText, unsigned long int labelColor, unsigned long int screenColor, bool ledValue) {
   digitalWrite(LED_PIN, ledValue);
-  if (intSetupMode != 0) return;
+  if (intSetupPage != 0) return;
   M5.Lcd.fillScreen(screenColor);
   M5.Lcd.setRotation(intOrientation);
   M5.Lcd.setTextColor(labelColor, screenColor);
@@ -548,14 +991,12 @@ void drawLabel(String labelText, unsigned long int labelColor, unsigned long int
 
 void setM5Orientation() {
   float accX = 0, accY = 0, accZ = 0;
-  #if defined(M5STICKC) 
+  #ifdef M5STICKCPLUS 
+  M5.Imu.getAccelData(&accX, &accY, &accZ);
+  #else
   M5.MPU6886.getAccelData(&accX, &accY, &accZ);
   #endif
-  #if defined(M5STICKCPLUS) 
-  M5.Imu.getAccelData(&accX, &accY, &accZ);
-  #endif
   //Serial.printf("%.2f   %.2f   %.2f \n",accX * 1000, accY * 1000, accZ * 1000);
-
   if (accZ < .9) {
     if (accX > .6) {
       intOrientation = 1;
@@ -569,7 +1010,6 @@ void setM5Orientation() {
       intOrientation = 3;
     }
   }
-
   if (intOrientation != intOrientationPrevious) {
     if (C_Debug_Level >= 2) {
       Serial.printf("M5 Orientation changed to %d\n", intOrientation);
@@ -595,9 +1035,9 @@ void startWebServer() {
   myWebServer.on("/update", HTTP_POST, []() {
     myWebServer.sendHeader("Connection", "close");
     myWebServer.send(200, "text/plain", (Update.hasError()) ? "FEHLER" : "OK");
-    intSetupMode = 1;
-    waitBtnA(0);
-    ESP.restart();
+    intSetupPage = 1;
+    waitButton(0);
+    restartESP();
   }, []() {
     HTTPUpload& myHTTPUpload = myWebServer.upload();
     if (myHTTPUpload.status == UPLOAD_FILE_START) {
@@ -642,7 +1082,7 @@ void startWebServer() {
     }
   });
   myWebServer.begin();
-  if (intSetupMode == 0) return;
+  if (intSetupPage == 0) return;
   if (C_Debug_Level >= 2) {
     Serial.print("HTTP Update Server started");
     Serial.println();
@@ -651,11 +1091,20 @@ void startWebServer() {
 
 void stopWebServer() {
   myWebServer.stop(); 
-  if (intSetupMode == 0) return;
+  if (intSetupPage == 0) return;
   if (C_Debug_Level >= 2) {
     Serial.print("HTTP Update Server stopped");
     Serial.println();
   }
+}
+
+void crashArray() {
+  return;
+  strlcpy(chrAtemName, arr_AtemName[1], sizeof(chrAtemName));
+  Serial.printf("arr_AtemName[0] = %s[%d]\n", arr_AtemName[0], strlen(arr_AtemName[0]));
+  Serial.printf("arr_AtemName[1] = %s[%d]\n", arr_AtemName[1], strlen(arr_AtemName[1]));
+  Serial.printf("chrAtemName = %s[%d]\n", chrAtemName, strlen(chrAtemName));
+  strlcpy(arr_AtemName[0], chrAtemName, (strlen(chrAtemName) + 1));
 }
 
 // EOF
