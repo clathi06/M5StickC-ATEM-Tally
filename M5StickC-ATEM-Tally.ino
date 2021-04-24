@@ -304,7 +304,9 @@ void checkLoopATEM() {
   if (arrTallyMode_0[1] != 'A') return;
   myATEM_Switcher.runLoop();
   intPreviewInput = myATEM_Switcher.getPreviewInput();
+  if (intPreviewInput > arrATEM_Inputs[0]) intPreviewInput = 9;
   intProgramInput = myATEM_Switcher.getProgramInput();
+  if (intProgramInput > arrATEM_Inputs[0]) intProgramInput = 9;
 }
 
 void checkLoopMQTT() {
@@ -327,12 +329,12 @@ void callbackMQTT(char* chrTopic, byte* payload, unsigned int length) {
     return;
   }
   iPayload = payload[0] - 48;
-  if ((iPayload < 1) || (iPayload > 8)) {
+  if ((iPayload < 1) || (iPayload > 9)) {
     flashLED();
     return;
   }
   iPayload = payload[1] - 48;
-  if ((iPayload < 1) || (iPayload > 8)) {
+  if ((iPayload < 1) || (iPayload > 9)) {
     flashLED();
     return;
   }
@@ -627,7 +629,12 @@ void checkSetup() {
       intSetupPage++;
     }
   }
-  startServerCommunication();
+  if (intSetupPage == 9) {
+    startServerCommunication();
+    isAutoSetup = true;
+    if ((arrTallyMode_0[0] == 'P') || (arrTallyMode_0[1] == 'B')) waitButton(intSetupPage);
+    if (intSetupPage < 9) return;
+  }
   savePreferences();
   intSetupPage = 0;
 }
@@ -654,6 +661,9 @@ void waitButton(int i1) {
       break;
     case 6:
       M5.Lcd.print(" HTTP Update oder ");
+      break;
+    case 9:
+      M5.Lcd.print(" Warten ohne ");
       break;
     default:
       M5.Lcd.print(" Auswahl oder ");
