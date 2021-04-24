@@ -34,7 +34,7 @@ Tally-Modus
 ## Bedienung
 Schalter an der linken Seite 
 - kurz Einschalten, ganz lang (6 sec) Ausschalten
-- die saubere Methode zum Ausschalten ist ein Reboot auf die Setup-Seite 1 und ggfs. Verkürzen des TiemOut und Abwarten
+- die saubere Methode zum Ausschalten ist ein Reboot auf die Setup-Seite 1 und ggfs. Verkürzen des TimeOut und Abwarten
 
 Schalter unterhalb vom Display (M5) 
 - Setup-Modus: kurz nächste Seite, lang (1 sec) grds. eine Seite zurück plus teilweise zusätzliche Aktionen
@@ -52,23 +52,23 @@ TimeOut
 Seite 1 Info
 - Ausgabe von Infos zum Stick und zur Bedienung
 - ButtonB: Ändern der Zeit bis zum TimeOut
-- M5 lang: Setup mit den letzten Einstellungen automatisch durchlaufen
+- M5 lang: Setup mit den zuletzt gespeicherten Einstellungen automatisch durchlaufen
 
 Seite 2 Modus Wahl
 - Auswahl des Modus, in dem der Stick arbeiten soll
 - TA Tally@ATEM: Tally Light am ATEM
 - PA PubClient@ATEM: MQTT Publisher am ATEM
-- TB Tally@Broker: Tally Light am Broker
-- ButtonB: Typ auswählen,  ganz oben steht der zuletzt gespeicherte
+- TB Tally@Broker: Tally Light am MQTT Broker
+- ButtonB: Modus auswählen, ganz oben steht der zuletzt gespeicherte
 - M5 lang: alle gespeicherten Einstellungen löschen
 
 Seite 3 ATEM Wahl im Modus TA und PA
 - Auswahl des Switcher-Typs mit Anzahl der Inputs
-- ButtonB: Typ auswählen,  ganz oben steht der zuletzt gespeicherte
+- ButtonB: Typ auswählen, ganz oben steht der zuletzt gespeicherte
 
 Seite 4 Broker Wahl im Modus PA und TB
-- Auswahl des Switcher-Typs mit Anzahl der Inputs
-- ButtonB: Typ auswählen,  ganz oben steht der zuletzt gespeicherte
+- Auswahl des MQTT-Servers mit Anzahl der Inputs für den Modus TB
+- ButtonB: Server auswählen, ganz oben steht der zuletzt gespeicherte
 
 Seite 5 WiFi Manager
 - Start des WiFi-Managers: https://github.com/tzapu/WiFiManager
@@ -85,6 +85,7 @@ Seite 6 WiFi Einstellungen
 Seite 7 ATEM Einstellungen im Modus TA und PA
 - DNS-Anfrage zur Auflösung des Hostnamens in eine IPv4-Adresse
 - ButtonB: Wechsel zwischen der per DNS ermittelten und der auf Seite 2 ausgewählten oder während Seite 5 im Config-Portal eingegebenen IPv4
+- M5 kurz: Setup beenden im Modus TA
 
 Seite 8 Broker Einstellungen im Modus PA und TB
 - DNS-Anfrage zur Auflösung des Hostnamens in eine IPv4-Adresse
@@ -93,8 +94,10 @@ Seite 8 Broker Einstellungen im Modus PA und TB
 
 Seite 9 Broker Start im Modus PA und TB
 - Warten auf Connect zum MQTT-Server
-- danach Wechsel in den Tally-Modus und Speicherung der Switcher-Daten
+- nach Connect Setup beenden
 - M5 lang: beim Warten auf MQTT-Connect Stick neu starten (funktioniert nur kurz während die LED flasht, der Connect-Versuch blockiert den Stick ziemlich lange)
+
+Vor dem Wechsel in den Tally-Modus werden die Setup-Daten in den Preferences gespeichert. 
 
 ## ToDo
 - Inline Dokumentation verbessern
