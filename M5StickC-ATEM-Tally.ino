@@ -25,10 +25,15 @@
 #define LED_PIN 10
 #define LED_HAT_RED 0
 #define LED_HAT_GREEN 26
+#define LED_HAT_INPUT 36
 
-// You can customize the colors if you want
+// c:\Software\Arduino\libraries\M5StickC\src\utility\ST7735_Defines.h
+// You can customize the colors in if you want
 // http://www.barth-dev.de/online/rgb565-color-picker/
-#define GRAY   0x0841 //   8   8  8
+//#define LIGHTGRAY 0xC618      /* 192, 192, 192 */ 
+#define LIGHTGRAY 0x7BEF //   128  128  128
+#define GRAY 0x4208 //   64  64  64
+//#define DARKGRAY   0x0841 //   8   8  8
 //#define GREEN  0x0400 //   0 128  0
 #define GREEN  0x07E0 //   0 255  0
 #define RED    0xF800 // 255   0  0
@@ -46,9 +51,10 @@ const int C_Debug_Level = 0;
 
 // Einstellungen
 const char* C_Pgm_Name = "ATEM Tally";
-const char* C_Pgm_Version = "2021-04-24";
+const char* C_Pgm_Version = "2021-04-27";
 const char* C_AP_SSID = "ATEM-Tally@M5StickC";
-const char* C_MQTT_Topic = "Tally/Inputs";
+const char* C_PubClient_Topic = "Tally/SubClients";
+const char* C_SubClient_Topic = "Tally/Inputs";
 char chrWiFiSSID[41] = "SSID";
 //char chrWiFiSSID[41] = "Technik@Halle";
 char chrWiFi_Pwd[41] = "";
@@ -78,10 +84,10 @@ int intTimeOut;
 
 // Setup 2
 const int C_arrTallyMode_Size = 4;
-const char* arrTallyModeLong[] = {"", "Tally@ATEM", "PubClient@ATEM", "Tally@Broker"} ;
+const char* arrTallyModeLong[] = {"", "Tally@ATEM", "Tally@Broker", "Publisher@ATEM"} ;
 char arrTallyModeLong_0[16];
 char chrTallyModeLong[16];
-const char* arrTallyMode[] = {"", "TA", "PA", "TB"} ;
+const char* arrTallyMode[] = {"", "TA", "TB", "PA"} ;
 char arrTallyMode_0[3];
 char chrTallyMode[3];
 int intTallyModeNr;
@@ -153,20 +159,25 @@ unsigned int intCameraNumber = 1;
 unsigned int intCameraNumberPrevious = 0;
 bool isPreviewTallyPrevious = false;
 bool isProgramTallyPrevious = false;
-bool isHatActive = true;
+bool isLedHatConnected = false;
+bool isLedHatConnectedPrevious = false;
+bool isLedHatMode = true;
 
 void setup() {
 // Serial
   Serial.begin(115200);
 // M5
   M5.begin();
-  #if defined(M5STICKC) 
+  #ifdef M5STICKC
   M5.MPU6886.Init();
   #endif
-  #ifdef M5STICKCPLUS)
+  #ifdef M5STICKCPLUS
   M5.Imu.Init();
   #endif
   pinMode(LED_PIN, OUTPUT);
+  pinMode(LED_HAT_RED, OUTPUT);
+  pinMode(LED_HAT_GREEN, OUTPUT);
+  pinMode(LED_HAT_INPUT, INPUT);
   strLcdSize = String(M5.Lcd.width()) + "*" + String(M5.Lcd.height());
 // TALLY Mode Array
   strlcpy(arrTallyModeLong_0, arrTallyModeLong[0], sizeof(arrTallyModeLong_0));
@@ -202,15 +213,11 @@ void setup() {
   intTimeOutSec = 0;
   if (intTimeOutMin == 0) intTimeOutSec = 10;
   intTimeOut = (intTimeOutMin * 60) + intTimeOutSec;
-// GPIO
-  pinMode(26, OUTPUT); // PIN  (INPUT, OUTPUT, ANALOG)
-//  pinMode(36, INPUT); // PIN  (INPUT,       , ANALOG)
-//  pinMode(25, OUTPUT); // PIN  (INPUT, OUTPUT, ANALOG)
-  pinMode( 0, OUTPUT); // PIN  (INPUT, OUTPUT,       )
   return;
-  pinMode( 0, INPUT); // PIN  (INPUT, OUTPUT,       )
-  pinMode(32, INPUT); // GROVE(INPUT, OUTPUT, ANALOG)
-  pinMode(33, INPUT); // GROVE(INPUT, OUTPUT, ANALOG)
+// GPIO
+  pinMode( 0, OUTPUT); // PIN  (INPUT, OUTPUT,       )
+  pinMode(26, OUTPUT); // PIN  (INPUT, OUTPUT, ANALOG)
+  pinMode(36, INPUT_PULLUP); // PIN  (INPUT,       , ANALOG)
 }
 
 void loop() {
@@ -219,7 +226,7 @@ void loop() {
   char chrInputs[3];
   sprintf(chrInputs, "%01d%01d", intPreviewInput, intProgramInput);
   if (C_Debug_Level >= 2) {
-    Serial.printf("TALLY Mode: %s\n", arrTallyMode[0]);
+    Serial.printf("TALLY Mode: %s %d\n", arrTallyMode[0], isLedHatMode);
     Serial.printf("TALLY Orientation: %d\n", intOrientation);
     Serial.printf("TALLY Camera Number: %d\n", intCameraNumber);
     Serial.printf("ATEM Preview Input: %d\n", intPreviewInput);
@@ -228,7 +235,7 @@ void loop() {
   strlcpy(chrTallyMode, arrTallyMode[0], sizeof(chrTallyMode));
   if (strcmp(arrTallyMode_0, "PA") == 0) {
     drawBroker();
-    myMQTT_Client.publish(C_MQTT_Topic,  chrInputs);
+    callbackPubClient();
   } else {
     drawTally();
   }
@@ -241,6 +248,8 @@ void loop() {
 void checkLoopEvents() {
   // Check for M5Stick Buttons
   checkLoopM5Events();
+  // Check for LED Hat
+  checkLoopLedHat();
   // Check for Setup 
   if (intSetupPage != 0) checkSetup();
   if (intSetupPage != 0) return;
@@ -265,7 +274,8 @@ void checkLoopM5Events() {
       intCameraNumber++; 
       if (intCameraNumber > intATEM_Inputs) {
         intCameraNumber = 1;
-        isHatActive = ! isHatActive;
+        isLedHatMode = ! isLedHatMode;
+        if (C_Debug_Level >= 2) Serial.printf("LED-HAT Mode: %d\n", isLedHatMode);
       }
       if (C_Debug_Level >= 2) Serial.printf("TALLY next Camera Number: %d\n", intCameraNumber);
     } else {
@@ -293,6 +303,19 @@ void checkLoopM5Events() {
   }
 }
 
+void checkLoopLedHat() {
+  unsigned int iInput = digitalRead(LED_HAT_INPUT);
+  isLedHatConnected = false;
+  if (iInput == HIGH) isLedHatConnected = true;
+  if (isLedHatConnectedPrevious == isLedHatConnected) return;
+  isLedHatConnectedPrevious = isLedHatConnected;
+  if (C_Debug_Level >= 1 ) {
+    Serial.printf("LED-HAT GPIO %d = %d = ", LED_HAT_INPUT, iInput);
+    if (isLedHatConnected == false) Serial.print("dis");
+    Serial.println("connected");
+  }
+}
+
 void checkLoopWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
   waitWiFi();
@@ -316,7 +339,6 @@ void checkLoopMQTT() {
 }
 
 void callbackMQTT(char* chrTopic, byte* payload, unsigned int length) {
-  int iPayload;
   if (C_Debug_Level >= 2) {
     Serial.printf("MQTT %s: ", chrTopic);
     for (int i=0; i<length; i++) {
@@ -324,6 +346,18 @@ void callbackMQTT(char* chrTopic, byte* payload, unsigned int length) {
     }
     Serial.printf("[%d]\n", length);
   }
+  if (strcmp(arrTallyMode_0, "PA") == 0) callbackPubClient();
+  if (strcmp(arrTallyMode_0, "TB") == 0) callbackSubClient(payload, length);
+}
+
+void callbackPubClient() {
+  char chrInputs[3];
+  sprintf(chrInputs, "%01d%01d", intPreviewInput, intProgramInput);
+  myMQTT_Client.publish(C_SubClient_Topic, chrInputs);
+}
+
+void callbackSubClient(byte* payload, unsigned int length) {
+  int iPayload;
   if (length != 2) {
     flashLED();
     return;
@@ -346,18 +380,18 @@ void setLED(int iColor) {
   switch (iColor) {
     case RED:
       digitalWrite(LED_PIN, LOW);
-      if (isHatActive) digitalWrite(LED_HAT_RED, HIGH);
+      if (isLedHatMode == true) digitalWrite(LED_HAT_RED, HIGH);
       digitalWrite(LED_HAT_GREEN, LOW);
       break;      
     case GREEN:
       digitalWrite(LED_PIN, HIGH);
       digitalWrite(LED_HAT_RED, LOW);
-      if (isHatActive) digitalWrite(LED_HAT_GREEN, HIGH);
+      if (isLedHatMode == true) digitalWrite(LED_HAT_GREEN, HIGH);
       break;      
     case YELLOW:
       digitalWrite(LED_PIN, LOW);
-      if (isHatActive) digitalWrite(LED_HAT_RED, HIGH);
-      if (isHatActive) digitalWrite(LED_HAT_GREEN, HIGH);
+      if (isLedHatMode == true) digitalWrite(LED_HAT_RED, HIGH);
+      if (isLedHatMode == true) digitalWrite(LED_HAT_GREEN, HIGH);
       break;      
     default:
       digitalWrite(LED_PIN, HIGH);
@@ -459,7 +493,7 @@ typedef enum {
       if (isConfigPortalActive == true) myWiFiManager.process();
     }
     intLoop++;
-    if (intLoop % 30 == 0) {
+    if (intLoop % 60 == 0) {
       if (C_Debug_Level >= 2) Serial.println();
     }
   }
@@ -470,7 +504,8 @@ typedef enum {
 void stopMQTT() {
   if (strcmp(arrTallyMode_0, "TA") == 0) return;
   if (myMQTT_Client.connected() == false) return;
-  if (strcmp(arrTallyMode_0, "TB") == 0) myMQTT_Client.unsubscribe(C_MQTT_Topic);
+  if (strcmp(arrTallyMode_0, "PA") == 0) myMQTT_Client.unsubscribe(C_PubClient_Topic);
+  if (strcmp(arrTallyMode_0, "TB") == 0) myMQTT_Client.unsubscribe(C_SubClient_Topic);
   delay(1000);
   myMQTT_Client.disconnect();  
   delay(1000);
@@ -503,7 +538,7 @@ bool waitMQTT() {
       if (C_Debug_Level >= 3) Serial.println("\nM5 TimeOut");
       restartESP();
     }
-    iTimeOut = iTimeOut - 2;
+    iTimeOut = iTimeOut - 1;
     if (C_Debug_Level >= 2) Serial.print(".");
     if (C_Debug_Level >= 3) Serial.print(myMQTT_Client.state());
     drawLabel(String(iTimeOut / 60 + 1), YELLOW, BLACK, YELLOW);
@@ -515,7 +550,7 @@ bool waitMQTT() {
     }
     intMillis = millis();
     lngMillis = millis();
-    while (millis() - lngMillis < 2000) {
+    while (millis() - lngMillis < 1000) {
       if (myMQTT_Client.connected()) lngMillis = 0;
       if (M5.BtnA.isPressed() && millis() - intMillis >= 500 ) {
         if (C_Debug_Level >= 3) Serial.println("\nM5.BtnA.isPressed");
@@ -524,18 +559,25 @@ bool waitMQTT() {
       M5.update();
     }
     intLoop++;
-    if (intLoop % 30 == 0) {
+    if (intLoop % 60 == 0) {
       if (C_Debug_Level >= 2) Serial.println();
     }
-    if (intLoop % 3 == 0) {
+    if (intLoop % 10 == 0) {
       myMQTT_Client.connect(chrHostName);
     }
   }
   if (C_Debug_Level >= 2) Serial.println("MQTT connected");
-  if (strcmp(arrTallyMode_0, "TB") != 0) return true;
-  myMQTT_Client.subscribe(C_MQTT_Topic);
-  if (C_Debug_Level >= 1) {
-    Serial.printf("MQTT.subscribe %s\n", C_MQTT_Topic);
+  if (strcmp(arrTallyMode_0, "PA") == 0) {
+    myMQTT_Client.subscribe(C_PubClient_Topic);
+    if (C_Debug_Level >= 1) {
+      Serial.printf("MQTT.subscribe %s\n", C_PubClient_Topic);
+    }
+  }
+  if (strcmp(arrTallyMode_0, "TB") == 0) {
+    myMQTT_Client.subscribe(C_SubClient_Topic);
+    if (C_Debug_Level >= 1) {
+      Serial.printf("MQTT.subscribe %s\n", C_SubClient_Topic);
+    }
   }
   return true;  
 }
@@ -1364,9 +1406,7 @@ void startServerCommunication() {
   intCameraNumberPrevious = 0;
   intCameraNumber = 1;
   if (arrTallyMode_0[1] == 'A') startATEM();
-//  if (strcmp(arrTallyMode_0, "TA") != 0) startMQTT();
-  if (arrTallyMode_0[0] == 'P') startPubMQTT();
-  if (strcmp(arrTallyMode_0, "TB") == 0) startSubMQTT();
+  if (strcmp(arrTallyMode_0, "TA") != 0) startMQTT();
 }
 
 void startATEM() {
@@ -1387,10 +1427,13 @@ void startMQTT() {
   String sText = ipMQTT.toString();
   sText.toCharArray(arrMQTT_IPv4_0, sizeof(arrMQTT_IPv4_0));
   printMQTTInfo1();
+  myMQTT_Client.setCallback(callbackMQTT);
   myMQTT_Client.setKeepAlive(60);
   myMQTT_Client.setServer(ipMQTT, 1883);
   waitMQTT();
   printMQTTInfo2();
+  if (strcmp(arrTallyMode_0, "TB") != 0) return;
+  myMQTT_Client.publish(C_PubClient_Topic,  chrHostName);
 }
 
 void printMQTTInfo1() {
@@ -1407,20 +1450,6 @@ void printMQTTInfo1() {
 }
 
 void printMQTTInfo2() {
-}
-
-void startPubMQTT() {
-  startMQTT();
-  return;  
-  myMQTT_Client.disconnect();
-  if (C_Debug_Level >= 1) {
-    Serial.printf("MQTT.disconnect\n");
-  }
-}
-
-void startSubMQTT() {
-  myMQTT_Client.setCallback(callbackMQTT);
-  startMQTT();  
 }
 
 // Setup Ende
@@ -1541,21 +1570,31 @@ void drawTally() {
   bool isProgramTally = false;
   if (intCameraNumber == intProgramInput) isProgramTally = true;
   if ((intOrientation == intOrientationPrevious) && (intCameraNumber == intCameraNumberPrevious) && (isPreviewTally == isPreviewTallyPrevious) && (isProgramTally == isProgramTallyPrevious)) return; // nothing changed?
+  isPreviewTallyPrevious = isPreviewTally;
+  isProgramTallyPrevious = isProgramTally;
   strLcdText = String(intCameraNumber);
   if (isProgramTally && isPreviewTally) { // program AND preview
     drawLabel(strLcdText, GREEN, RED, RED);
-  } else if (isProgramTally) { // only program
+    return;
+  } 
+  if (isProgramTally) { // only program
     drawLabel(strLcdText, BLACK, RED, RED);
-  } else if (isPreviewTally) { // only preview
+    return;
+  } 
+  if (isPreviewTally) { // only preview
     drawLabel(strLcdText, BLACK, GREEN, GREEN);
-  } else { // neither
-    drawLabel(strLcdText, GRAY, BLACK, BLACK);
+    return;
+  } // neither
+  unsigned int iColor = GRAY;
+  if (isLedHatMode == true) iColor = WHITE;
+  drawLabel(strLcdText, iColor, BLACK, BLACK);
+  if (C_Debug_Level >= 1) {
+    Serial.printf("LED-HAT Color: %X\n", iColor);
   }
-  isPreviewTallyPrevious = isPreviewTally;
-  isProgramTallyPrevious = isProgramTally;
 }
 
 void drawBroker() {
+  setLED(BLACK);
   if (intSetupPage != 0) return;
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setRotation(intOrientation);
@@ -1580,7 +1619,6 @@ void drawBroker() {
 
 void drawLabel(String labelText, unsigned long int labelColor, unsigned long int screenColor, int iColor) {
   setLED(iColor);
-//  digitalWrite(LED_PIN, iColor);
   if (intSetupPage != 0) return;
   M5.Lcd.fillScreen(screenColor);
   M5.Lcd.setRotation(intOrientation);

@@ -10,23 +10,21 @@ Dann dient ein Stick als Publisher und die anderen als Subscriber.
 - Python 2.7.x und Arduino-IDE mit den für M5Stick-C(Plus) und ATEM notwendigen Bibliotheken. 
 - Anpassung von ATEMbase.* für den ESP32: "#ifdef ESP8266" -> "#if defined(ESP8266) || defined(ESP32)".
 - Auswahl eines Debug-Levels durch Auskommentierung des passenden Werts. 
-- Auskommentieren des #define M5STICKCPLUS für den verwendeten Stick
-- ggfs. Eintragen von SSID und Kennwort fürs WLAN (WiFi). 
-- ggfs. Eintragen von Namen und ggfs. IPv4 der ATEM-Switcher. 
+- ggfs. Auskommentieren des #define M5STICKCPLUS für den verwendeten Stick
+- ggfs. Eintragen von Namen und IPv4 der ATEM-Switcher und des Brokers 
 
 ## Anzeigen
 Setup-Modus
-- 3 Sekunden LED an mit 3 Sekunden Pause: Warten auf Eingabe
+- abwechselnd 3 Sekunden LED rot und grün (am LED-Hat): Warten auf Eingabe
 
 Setup- und Tally-Modus
-- 0,1 Sekunde LED an mit 1 Sekunde Pause: Warten auf einen WiFi-Connect
-- 0,1 Sekunde LED an mit 2 Sekunde Pause: Warten auf einen MQTT-Connect
+- 0,1 Sekunde alle LED an mit 1 Sekunde Pause: Warten auf einen WiFi und/oder MQTT-Connect
 
 Tally-Modus
 - rote LED an: Program aktiv
 - grüne LED am LED-Hat an: Preview aktiv
-- weisse Kameranummer auf schwarzem Grund: WiFi nicht verbunden
-- graue Kameranummer auf schwarzem Grund: weder Preview noch Program aktiv
+- kurz gelbe Kameranummer auf schwarzem Grund: WiFi und/oder MQTT nicht verbunden
+- permanent weisse/graue Kameranummer auf schwarzem Grund: weder Preview noch Program aktiv
 - schwarze Kameranummer auf grünem Grund: Preview aktiv
 - schwarze Kameranummer auf rotem Grund: Program aktiv
 - grüne Kameranummer auf rotem Grund: Preview und Program aktiv
