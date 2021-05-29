@@ -1,5 +1,5 @@
 // http://librarymanager/All#M5StickC https://github.com/m5stack/M5StickC
-#define M5STICKCPLUS
+//#define M5STICKCPLUS
 #ifdef M5STICKCPLUS
 #include <M5StickCPlus.h>
 #else
@@ -9,13 +9,13 @@
 // WiFi
 #include <WiFi.h>
 #include <WiFiClient.h>
-#include <WiFiManager.h>         // https://github.com/tzapu/WiFiManager
+#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 #include <WebServer.h>
 #include <Update.h>
 #include <WiFiUdp.h>
 // ATEM
 // https://github.com/kasperskaarhoj/SKAARHOJ-Open-Engineering/tree/master/ArduinoLibs
-#include <SkaarhojPgmspace.h>
+#include <SkaarhojPgmspace.h> 
 #include <ATEMbase.h>
 #include <ATEMstd.h>
 // MQTT
@@ -51,7 +51,7 @@ const int C_Debug_Level = 0;
 
 // Einstellungen
 const char* C_Pgm_Name = "ATEM Tally";
-const char* C_Pgm_Version = "2021-04-27";
+const char* C_Pgm_Version = "2021-05-29";
 const char* C_AP_SSID = "ATEM-Tally@M5StickC";
 const char* C_PubClient_Topic = "Tally/SubClients";
 const char* C_SubClient_Topic = "Tally/Inputs";
@@ -1601,6 +1601,7 @@ void drawBroker() {
   int intTextDatum = M5.Lcd.getTextDatum();
   M5.Lcd.setTextDatum(MC_DATUM);
   strLcdText = String(intPreviewInput);
+  if (intPreviewInput > arrATEM_Inputs[0]) strLcdText = "-";
   M5.Lcd.setTextColor(GREEN);
   if (intOrientation % 2 == 0) {
     M5.Lcd.drawString(strLcdText, M5.Lcd.width() / 2, M5.Lcd.height() / 4, 8);
@@ -1608,6 +1609,7 @@ void drawBroker() {
     M5.Lcd.drawString(strLcdText, M5.Lcd.width() / 4, M5.Lcd.height() / 2, 8);
   }
   strLcdText = String(intProgramInput);
+  if (intProgramInput > arrATEM_Inputs[0]) strLcdText = "-";
   M5.Lcd.setTextColor(RED);
   if (intOrientation % 2 == 0) {
     M5.Lcd.drawString(strLcdText, M5.Lcd.width() / 2, M5.Lcd.height() * 3 / 4, 8);
