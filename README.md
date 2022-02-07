@@ -18,16 +18,17 @@ Setup-Modus
 - abwechselnd 3 Sekunden LED rot und grün (am LED-Hat): Warten auf Eingabe
 
 Setup- und Tally-Modus
-- 0,1 Sekunde alle LED an mit 1 Sekunde Pause: Warten auf einen WiFi und/oder MQTT-Connect
+- 1/4 Sekunde alle LED an mit 3/4 Sekunde Pause: Warten auf einen WiFi und/oder MQTT-Connect
 
 Tally-Modus
 - rote LED an: Program aktiv
 - grüne LED am LED-Hat an: Preview aktiv
-- kurz gelbe Kameranummer auf schwarzem Grund: WiFi und/oder MQTT nicht verbunden
+- kurz gelbe Zeit bis zum Timeout auf schwarzem Grund: WiFi und/oder MQTT nicht verbunden
 - permanent weisse/graue Kameranummer auf schwarzem Grund: weder Preview noch Program aktiv
 - schwarze Kameranummer auf grünem Grund: Preview aktiv
 - schwarze Kameranummer auf rotem Grund: Program aktiv
 - grüne Kameranummer auf rotem Grund: Preview und Program aktiv
+- Minus hinter der Kameranummer: LED-Hat abgeschaltet = Dark Mode
 
 ## Bedienung
 Schalter an der linken Seite 
@@ -36,7 +37,7 @@ Schalter an der linken Seite
 
 Schalter unterhalb vom Display (M5) 
 - Setup-Modus: kurz nächste Seite, lang (1 sec) grds. eine Seite zurück plus teilweise zusätzliche Aktionen
-- Tally-Modus: kurz bis zu 8 Kameras zyklisch durchschalten, lang Stick neu starten
+- Tally-Modus: kurz bis zu 8 Kameras zyklisch durchschalten, dabei abwechselnd mit und ohne LED-Hat, lang Stick neu starten
 
 Schalter an der rechten Seite (ButtonB)
 - Setup-Modus: kurz teilweise grüne Option ändern, lang ohne Funktion

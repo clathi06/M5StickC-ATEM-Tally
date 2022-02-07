@@ -1,5 +1,5 @@
 // http://librarymanager/All#M5StickC https://github.com/m5stack/M5StickC
-//#define M5STICKCPLUS
+#define M5STICKCPLUS
 #ifdef M5STICKCPLUS
 #include <M5StickCPlus.h>
 #else
@@ -51,7 +51,7 @@ const int C_Debug_Level = 0;
 
 // Einstellungen
 const char* C_Pgm_Name = "ATEM Tally";
-const char* C_Pgm_Version = "2021-05-29";
+const char* C_Pgm_Version = "2022-02-06";
 const char* C_AP_SSID = "ATEM-Tally@M5StickC";
 const char* C_PubClient_Topic = "Tally/SubClients";
 const char* C_SubClient_Topic = "Tally/Inputs";
@@ -71,6 +71,7 @@ unsigned int prefATEM_Inputs;
 String prefMQTT_Name;
 String prefMQTT_IPv4;
 unsigned int prefMQTT_Inputs;
+unsigned int prefCameraNumber;
 
 unsigned int intSetupCount = 0;
 unsigned int intSetupLoop = 0;
@@ -157,6 +158,7 @@ unsigned int intProgramInput;
 unsigned int intProgramInputPrevious = 0;
 unsigned int intCameraNumber = 1;
 unsigned int intCameraNumberPrevious = 0;
+unsigned int intCameraNumberReboot = 0;
 bool isPreviewTallyPrevious = false;
 bool isProgramTallyPrevious = false;
 bool isLedHatConnected = false;
@@ -271,13 +273,17 @@ void checkLoopM5Events() {
   if (M5.BtnA.wasPressed()) {
     if (C_Debug_Level >= 3) Serial.println("M5.BtnA.wasPressed");
     if (arrTallyMode_0[0] == 'T') {
+      intCameraNumberReboot = intCameraNumber;
       intCameraNumber++; 
-      if (intCameraNumber > intATEM_Inputs) {
+      unsigned int intInputs = intATEM_Inputs;
+      if (strcmp(arrTallyMode_0, "TB") == 0) intInputs = intMQTT_Inputs;
+      if (intCameraNumber > intInputs) {
         intCameraNumber = 1;
         isLedHatMode = ! isLedHatMode;
         if (C_Debug_Level >= 2) Serial.printf("LED-HAT Mode: %d\n", isLedHatMode);
       }
       if (C_Debug_Level >= 2) Serial.printf("TALLY next Camera Number: %d\n", intCameraNumber);
+//      saveCameraNumber();
     } else {
       myATEM_Switcher.doCut();
       if (C_Debug_Level >= 2) Serial.printf("ATEM.doCut\n");
@@ -286,6 +292,8 @@ void checkLoopM5Events() {
   }
   if (M5.BtnA.isPressed() && lngButtonAMillis != 0 && millis() - lngButtonAMillis >= 500 ) {
     if (C_Debug_Level >= 3) Serial.println("M5.BtnA.isPressed");
+    if (intCameraNumberReboot != 0) intCameraNumber = intCameraNumberReboot;
+    if (C_Debug_Level >= 2) Serial.printf("TALLY save Camera Number: %d\n", intCameraNumber);
     restartESP();
   }
   if (M5.BtnB.wasPressed()) {
@@ -417,6 +425,7 @@ void stopLED() {
 
 void restartESP() {
 //  digitalWrite(LED_PIN, LOW);
+  saveCameraNumber();
   setLED(YELLOW);
   stopMQTT();
   stopWiFi();
@@ -475,7 +484,7 @@ typedef enum {
     if (C_Debug_Level >= 2) Serial.print(".");
     if (C_Debug_Level >= 3) Serial.print(WiFi.status());
     drawLabel(String(iTimeOut / 60 + 1), YELLOW, BLACK, YELLOW);
-    delay(100);
+    delay(250);
     if ((intSetupPage != 0) || (arrTallyMode_0[0] == 'T')) {
       drawLabel(strLcdText, WHITE, BLACK, BLACK);
     } else {
@@ -483,7 +492,7 @@ typedef enum {
     }
     intMillis = millis();
     lngMillis = millis();
-    while (millis() - lngMillis < 1000) {
+    while (millis() - lngMillis < 750) {
       if (WiFi.status() == WL_CONNECTED) lngMillis = 0;
       if (M5.BtnA.isPressed() && millis() - intMillis >= 500 ) {
         if (C_Debug_Level >= 3) Serial.println("\nM5.BtnA.isPressed");
@@ -542,7 +551,7 @@ bool waitMQTT() {
     if (C_Debug_Level >= 2) Serial.print(".");
     if (C_Debug_Level >= 3) Serial.print(myMQTT_Client.state());
     drawLabel(String(iTimeOut / 60 + 1), YELLOW, BLACK, YELLOW);
-    delay(100);
+    delay(250);
     if ((intSetupPage != 0) || (arrTallyMode_0[0] == 'T')) {
       drawLabel(strLcdText, WHITE, BLACK, BLACK);
     } else {
@@ -550,7 +559,7 @@ bool waitMQTT() {
     }
     intMillis = millis();
     lngMillis = millis();
-    while (millis() - lngMillis < 1000) {
+    while (millis() - lngMillis < 750) {
       if (myMQTT_Client.connected()) lngMillis = 0;
       if (M5.BtnA.isPressed() && millis() - intMillis >= 500 ) {
         if (C_Debug_Level >= 3) Serial.println("\nM5.BtnA.isPressed");
@@ -1405,6 +1414,7 @@ void printMQTT_DNSInfo2(int i1, int i2) {
 void startServerCommunication() {
   intCameraNumberPrevious = 0;
   intCameraNumber = 1;
+  intCameraNumber = prefCameraNumber;
   if (arrTallyMode_0[1] == 'A') startATEM();
   if (strcmp(arrTallyMode_0, "TA") != 0) startMQTT();
 }
@@ -1464,6 +1474,7 @@ void clearPreferences() {
   prefMQTT_Name = "";
   prefMQTT_IPv4 = "0.0.0.0";
   prefMQTT_Inputs = 1;
+  prefCameraNumber = 1;
   myPreferences.end(); 
 }
 
@@ -1496,6 +1507,8 @@ void getPreferences() {
   intMQTT_Inputs = arrMQTT_Inputs[0];
   prefMQTT_Inputs = myPreferences.getUInt("MqttInputs", intMQTT_Inputs);
   arrMQTT_Inputs[0] = prefMQTT_Inputs;
+// Camera Number
+  prefCameraNumber = myPreferences.getUInt("CameraNumber", 1);
   myPreferences.end(); 
   if (C_Debug_Level >= 1) {
     Serial.print("\nPreferences \n");
@@ -1513,6 +1526,8 @@ void getPreferences() {
     Serial.println(prefMQTT_IPv4);
     Serial.printf("MQTT Inputs: %d -> ", intMQTT_Inputs);
     Serial.println(prefMQTT_Inputs);
+    Serial.printf("CameraNumber: %d -> ", intCameraNumber);
+    Serial.println(prefCameraNumber);
   }
 }
 
@@ -1563,6 +1578,16 @@ void savePreferences() {
   myPreferences.end(); 
 }
 
+void saveCameraNumber() {
+// Nummer des verwendeten Eingangs sichern
+  Serial.printf("Saving Camera Number: %d -> %d\n", prefCameraNumber, intCameraNumber);
+  if (prefCameraNumber == intCameraNumber) return;
+  prefCameraNumber = intCameraNumber;
+  myPreferences.begin(C_Pref_Section, false);
+  myPreferences.putUInt("CameraNumber", prefCameraNumber);
+  myPreferences.end(); 
+}
+
 // Loop
 void drawTally() {
   bool isPreviewTally = false;
@@ -1572,7 +1597,11 @@ void drawTally() {
   if ((intOrientation == intOrientationPrevious) && (intCameraNumber == intCameraNumberPrevious) && (isPreviewTally == isPreviewTallyPrevious) && (isProgramTally == isProgramTallyPrevious)) return; // nothing changed?
   isPreviewTallyPrevious = isPreviewTally;
   isProgramTallyPrevious = isProgramTally;
-  strLcdText = String(intCameraNumber);
+  if (isLedHatMode == true) {
+    strLcdText = String(intCameraNumber);
+  } else {
+    strLcdText = String(intCameraNumber) + "-";
+  }
   if (isProgramTally && isPreviewTally) { // program AND preview
     drawLabel(strLcdText, GREEN, RED, RED);
     return;
