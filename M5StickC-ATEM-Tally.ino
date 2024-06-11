@@ -51,7 +51,7 @@ const int C_Debug_Level = 0;
 
 // Einstellungen
 const char* C_Pgm_Name = "ATEM Tally";
-const char* C_Pgm_Version = "2022-02-06";
+const char* C_Pgm_Version = "2024-06-11";
 const char* C_AP_SSID = "ATEM-Tally@M5StickC";
 const char* C_PubClient_Topic = "Tally/SubClients";
 const char* C_SubClient_Topic = "Tally/Inputs";
@@ -72,6 +72,7 @@ String prefMQTT_Name;
 String prefMQTT_IPv4;
 unsigned int prefMQTT_Inputs;
 unsigned int prefCameraNumber;
+unsigned int prefOrientation;
 
 unsigned int intSetupCount = 0;
 unsigned int intSetupLoop = 0;
@@ -426,6 +427,7 @@ void stopLED() {
 void restartESP() {
 //  digitalWrite(LED_PIN, LOW);
   saveCameraNumber();
+  saveOrientation();
   setLED(YELLOW);
   stopMQTT();
   stopWiFi();
@@ -1415,6 +1417,8 @@ void startServerCommunication() {
   intCameraNumberPrevious = 0;
   intCameraNumber = 1;
   intCameraNumber = prefCameraNumber;
+  intOrientation = 0;
+  intOrientation = prefOrientation;
   if (arrTallyMode_0[1] == 'A') startATEM();
   if (strcmp(arrTallyMode_0, "TA") != 0) startMQTT();
 }
@@ -1475,6 +1479,7 @@ void clearPreferences() {
   prefMQTT_IPv4 = "0.0.0.0";
   prefMQTT_Inputs = 1;
   prefCameraNumber = 1;
+  prefOrientation = 0;
   myPreferences.end(); 
 }
 
@@ -1509,6 +1514,8 @@ void getPreferences() {
   arrMQTT_Inputs[0] = prefMQTT_Inputs;
 // Camera Number
   prefCameraNumber = myPreferences.getUInt("CameraNumber", 1);
+// Orientation
+  prefOrientation = myPreferences.getUInt("Orientation", 0);
   myPreferences.end(); 
   if (C_Debug_Level >= 1) {
     Serial.print("\nPreferences \n");
@@ -1528,6 +1535,8 @@ void getPreferences() {
     Serial.println(prefMQTT_Inputs);
     Serial.printf("CameraNumber: %d -> ", intCameraNumber);
     Serial.println(prefCameraNumber);
+    Serial.printf("Orientation: %d -> ", intOrientation);
+    Serial.println(prefOrientation);
   }
 }
 
@@ -1585,6 +1594,16 @@ void saveCameraNumber() {
   prefCameraNumber = intCameraNumber;
   myPreferences.begin(C_Pref_Section, false);
   myPreferences.putUInt("CameraNumber", prefCameraNumber);
+  myPreferences.end(); 
+}
+
+void saveOrientation() {
+// Ausrichtung sichern
+  Serial.printf("Saving Orientation: %d -> %d\n", prefOrientation, intOrientation);
+  if (prefOrientation == intOrientation) return;
+  prefOrientation = intOrientation;
+  myPreferences.begin(C_Pref_Section, false);
+  myPreferences.putUInt("Orientation", prefOrientation);
   myPreferences.end(); 
 }
 
